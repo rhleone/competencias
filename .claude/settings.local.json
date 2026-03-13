@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd C:/DEV_ROGER/AI/belgraneanos && echo \"N\" | npx create-next-app@latest . --typescript --tailwind --eslint --app --src-dir --import-alias \"@/*\" --no-git 2>&1 || true)",
+      "Bash(mkdir -p C:/DEV_ROGER/AI/temp_nextapp && cd C:/DEV_ROGER/AI/temp_nextapp && npx create-next-app@latest . --typescript --tailwind --eslint --app --src-dir --import-alias \"@/*\" --no-git 2>&1)",
+      "Bash(rm -rf C:/DEV_ROGER/AI/temp_nextapp && mkdir -p C:/DEV_ROGER/AI/temp_nextapp && cd C:/DEV_ROGER/AI/temp_nextapp && printf '\\\\n' | npx create-next-app@latest . --typescript --tailwind --eslint --app --src-dir --import-alias \"@/*\" --no-git 2>&1)",
+      "Bash(cp -r C:/DEV_ROGER/AI/temp_nextapp/. C:/DEV_ROGER/AI/belgraneanos/ 2>&1 || true && ls C:/DEV_ROGER/AI/belgraneanos/)",
+      "Bash(cd C:/DEV_ROGER/AI/belgraneanos && npm install @supabase/supabase-js @supabase/ssr @tanstack/react-query zod date-fns 2>&1)",
+      "Bash(cd C:/DEV_ROGER/AI/belgraneanos && npm install -D @types/node 2>&1)",
+      "Bash(cd C:/DEV_ROGER/AI/belgraneanos && printf '\\\\n' | npx shadcn@latest init -d 2>&1)"
+    ]
+  }
+}
