@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { MatchStatus, DisciplineType, GenderType } from '@/types/database'
+import { TeamLogo } from '@/components/ui/team-logo'
 
 const SPORT_LABELS: Record<DisciplineType, string> = {
   football: 'Fútbol', basketball: 'Basketball', volleyball: 'Voleyball', futsal: 'Fútbol Sala',
@@ -15,8 +16,8 @@ interface LiveMatch {
   status: MatchStatus
   home_score: number | null
   away_score: number | null
-  home_team: { name: string; color: string | null } | null
-  away_team: { name: string; color: string | null } | null
+  home_team: { name: string; color: string | null; logo_url: string | null } | null
+  away_team: { name: string; color: string | null; logo_url: string | null } | null
   discipline: { name: DisciplineType; gender: GenderType } | null
 }
 
@@ -51,8 +52,8 @@ interface BracketMatch {
   away_score: number | null
   scheduled_at: string | null
   field_number: number | null
-  home_team: { id: string; name: string; color: string | null } | null
-  away_team: { id: string; name: string; color: string | null } | null
+  home_team: { id: string; name: string; color: string | null; logo_url: string | null } | null
+  away_team: { id: string; name: string; color: string | null; logo_url: string | null } | null
   discipline: { id: string; name: DisciplineType; gender: GenderType } | null
   phase: { name: string; phase_type: string } | null
 }
@@ -96,7 +97,7 @@ export default function ResultadosPage() {
   const loadTodayMatches = useCallback(async (eid: string) => {
     const { data } = await supabase
       .from('matches')
-      .select('id, scheduled_at, field_number, status, home_score, away_score, home_team:home_team_id(name, color), away_team:away_team_id(name, color), discipline:discipline_id(name, gender)')
+      .select('id, scheduled_at, field_number, status, home_score, away_score, home_team:home_team_id(name, color, logo_url), away_team:away_team_id(name, color, logo_url), discipline:discipline_id(name, gender)')
       .eq('edition_id', eid)
       .gte('scheduled_at', `${today}T00:00:00`)
       .lte('scheduled_at', `${today}T23:59:59`)
@@ -494,7 +495,7 @@ function BracketCard({ match }: { match: BracketMatch }) {
           <span className="text-xs text-gray-400">BYE</span>
         </div>
         <div className="flex items-center px-2.5 py-2 gap-2 text-sm font-medium">
-          {team && <span className="w-3 h-3 rounded-full border border-gray-200" style={{ backgroundColor: team.color ?? '#ccc' }} />}
+          {team && <TeamLogo logoUrl={team.logo_url} color={team.color} name={team.name} size="xs" />}
           <span className="flex-1 truncate">{team?.name ?? '—'}</span>
           <span className="text-xs text-gray-400">avanza</span>
         </div>
@@ -515,7 +516,7 @@ function BracketCard({ match }: { match: BracketMatch }) {
       <div className={`flex items-center px-2.5 py-1.5 gap-2 border-b text-sm ${homeWin ? 'bg-yellow-50 font-bold' : ''}`}>
         {match.home_team ? (
           <>
-            <span className="w-3 h-3 rounded-full flex-shrink-0 border border-gray-200" style={{ backgroundColor: match.home_team.color ?? '#ccc' }} />
+            <TeamLogo logoUrl={match.home_team.logo_url} color={match.home_team.color} name={match.home_team.name} size="xs" />
             <span className="flex-1 truncate">{match.home_team.name}</span>
             {(isLive || isFinished) && <span className="font-mono font-bold">{match.home_score ?? 0}</span>}
           </>
@@ -524,7 +525,7 @@ function BracketCard({ match }: { match: BracketMatch }) {
       <div className={`flex items-center px-2.5 py-1.5 gap-2 text-sm ${awayWin ? 'bg-yellow-50 font-bold' : ''}`}>
         {match.away_team ? (
           <>
-            <span className="w-3 h-3 rounded-full flex-shrink-0 border border-gray-200" style={{ backgroundColor: match.away_team.color ?? '#ccc' }} />
+            <TeamLogo logoUrl={match.away_team.logo_url} color={match.away_team.color} name={match.away_team.name} size="xs" />
             <span className="flex-1 truncate">{match.away_team.name}</span>
             {(isLive || isFinished) && <span className="font-mono font-bold">{match.away_score ?? 0}</span>}
           </>
@@ -558,7 +559,7 @@ function MatchCard({ match }: { match: LiveMatch }) {
       </div>
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-2 flex-1 min-w-0">
-          <div className="w-5 h-5 rounded-full flex-shrink-0 border border-gray-200" style={{ backgroundColor: match.home_team?.color ?? '#3B82F6' }} />
+          <TeamLogo logoUrl={match.home_team?.logo_url} color={match.home_team?.color} name={match.home_team?.name} size="sm" />
           <span className="font-medium text-sm truncate">{match.home_team?.name}</span>
         </div>
         <div className="flex-shrink-0 text-center px-2">
@@ -572,7 +573,7 @@ function MatchCard({ match }: { match: LiveMatch }) {
         </div>
         <div className="flex items-center gap-2 flex-1 min-w-0 justify-end">
           <span className="font-medium text-sm truncate text-right">{match.away_team?.name}</span>
-          <div className="w-5 h-5 rounded-full flex-shrink-0 border border-gray-200" style={{ backgroundColor: match.away_team?.color ?? '#EF4444' }} />
+          <TeamLogo logoUrl={match.away_team?.logo_url} color={match.away_team?.color} name={match.away_team?.name} size="sm" />
         </div>
       </div>
     </div>

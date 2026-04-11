@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
 import type { MatchStatus, DisciplineType } from '@/types/database'
+import { TeamLogo } from '@/components/ui/team-logo'
 
 const SPORT_LABELS: Record<DisciplineType, string> = {
   football: 'Fútbol', basketball: 'Basketball', volleyball: 'Voleyball', futsal: 'Fútbol Sala',
@@ -16,8 +17,8 @@ interface DashboardMatch {
   status: MatchStatus
   home_score: number | null
   away_score: number | null
-  home_team: { name: string } | null
-  away_team: { name: string } | null
+  home_team: { name: string; color: string | null; logo_url: string | null } | null
+  away_team: { name: string; color: string | null; logo_url: string | null } | null
   discipline: { name: DisciplineType; gender: string } | null
 }
 
@@ -42,7 +43,7 @@ export default function OperatorDashboard() {
   const loadMatches = useCallback(async () => {
     const { data } = await supabase
       .from('matches')
-      .select('id, scheduled_at, field_number, status, home_score, away_score, home_team:home_team_id(name), away_team:away_team_id(name), discipline:discipline_id(name, gender)')
+      .select('id, scheduled_at, field_number, status, home_score, away_score, home_team:home_team_id(name, color, logo_url), away_team:away_team_id(name, color, logo_url), discipline:discipline_id(name, gender)')
       .gte('scheduled_at', `${today}T00:00:00`)
       .lte('scheduled_at', `${today}T23:59:59`)
       .neq('status', 'postponed')
@@ -118,8 +119,12 @@ export default function OperatorDashboard() {
                           <span className="text-xs text-gray-400 flex-shrink-0">C{m.field_number}</span>
                           <StatusBadge status={m.status} />
                         </div>
-                        <p className="font-medium text-sm truncate">
-                          {m.home_team?.name} <span className="text-gray-400 font-normal">vs</span> {m.away_team?.name}
+                        <p className="font-medium text-sm truncate flex items-center gap-1.5">
+                          <TeamLogo logoUrl={m.home_team?.logo_url} color={m.home_team?.color} name={m.home_team?.name} size="xs" />
+                          {m.home_team?.name}
+                          <span className="text-gray-400 font-normal">vs</span>
+                          {m.away_team?.name}
+                          <TeamLogo logoUrl={m.away_team?.logo_url} color={m.away_team?.color} name={m.away_team?.name} size="xs" />
                         </p>
                         {(m.status === 'live' || m.status === 'finished') && (
                           <p className={`text-2xl font-bold mt-1 tabular-nums ${m.status === 'live' ? 'text-red-600' : 'text-gray-700'}`}>

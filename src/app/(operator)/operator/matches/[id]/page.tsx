@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import type { MatchStatus, DisciplineType } from '@/types/database'
+import { TeamLogo } from '@/components/ui/team-logo'
 
 const SPORT_LABELS: Record<DisciplineType, string> = {
   football: 'Fútbol', basketball: 'Basketball', volleyball: 'Voleyball', futsal: 'Fútbol Sala',
@@ -25,8 +26,8 @@ interface MatchDetail {
   bracket_position: string | null
   winner_advances_to: string | null
   winner_slot: string | null
-  home_team: { id: string; name: string; color: string | null } | null
-  away_team: { id: string; name: string; color: string | null } | null
+  home_team: { id: string; name: string; color: string | null; logo_url: string | null } | null
+  away_team: { id: string; name: string; color: string | null; logo_url: string | null } | null
   discipline: { name: DisciplineType; gender: string } | null
   group: { name: string } | null
 }
@@ -52,7 +53,7 @@ export default function MatchPage({ params }: { params: Promise<{ id: string }> 
   async function loadMatch() {
     const { data } = await supabase
       .from('matches')
-      .select('id, edition_id, scheduled_at, field_number, match_day, status, home_score, away_score, notes, bracket_position, winner_advances_to, winner_slot, home_team:home_team_id(id, name, color), away_team:away_team_id(id, name, color), discipline:discipline_id(name, gender), group:group_id(name)')
+      .select('id, edition_id, scheduled_at, field_number, match_day, status, home_score, away_score, notes, bracket_position, winner_advances_to, winner_slot, home_team:home_team_id(id, name, color, logo_url), away_team:away_team_id(id, name, color, logo_url), discipline:discipline_id(name, gender), group:group_id(name)')
       .eq('id', id)
       .single()
     if (data) {
@@ -148,10 +149,7 @@ export default function MatchPage({ params }: { params: Promise<{ id: string }> 
         {/* Score display */}
         <div className="flex items-center justify-between gap-4 py-4">
           <div className="text-center flex-1">
-            <div
-              className="w-8 h-8 rounded-full mx-auto mb-2 border-2 border-white shadow"
-              style={{ backgroundColor: match.home_team?.color ?? '#3B82F6' }}
-            />
+            <TeamLogo logoUrl={match.home_team?.logo_url} color={match.home_team?.color} name={match.home_team?.name} size="md" className="mx-auto mb-2 border-2 border-white shadow" />
             <p className="font-semibold text-sm">{match.home_team?.name}</p>
             <p className="text-xs text-gray-400 mt-0.5">Local</p>
           </div>
@@ -178,10 +176,7 @@ export default function MatchPage({ params }: { params: Promise<{ id: string }> 
             </div>
           </div>
           <div className="text-center flex-1">
-            <div
-              className="w-8 h-8 rounded-full mx-auto mb-2 border-2 border-white shadow"
-              style={{ backgroundColor: match.away_team?.color ?? '#EF4444' }}
-            />
+            <TeamLogo logoUrl={match.away_team?.logo_url} color={match.away_team?.color} name={match.away_team?.name} size="md" className="mx-auto mb-2 border-2 border-white shadow" />
             <p className="font-semibold text-sm">{match.away_team?.name}</p>
             <p className="text-xs text-gray-400 mt-0.5">Visitante</p>
           </div>

@@ -1,11 +1,12 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import { TeamLogo } from '@/components/ui/team-logo'
 import {
   Dialog,
   DialogContent,
@@ -23,7 +24,7 @@ const DISCIPLINE_LABELS: Record<string, string> = {
 }
 
 type Discipline = { id: string; name: string; gender: string }
-type Team = { id: string; name: string; color: string | null; disciplines: Discipline[] }
+type Team = { id: string; name: string; color: string | null; logo_url: string | null; disciplines: Discipline[] }
 
 export default function TeamsTab({ editionId }: { editionId: string }) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -39,19 +40,22 @@ export default function TeamsTab({ editionId }: { editionId: string }) {
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({ name: '', color: '#3B82F6', grade: '' })
   const [selectedDisciplines, setSelectedDisciplines] = useState<string[]>([])
+  const [logoFile, setLogoFile] = useState<File | null>(null)
+  const [logoPreview, setLogoPreview] = useState<string>('')
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   async function load() {
     setLoading(true)
     const [{ data: disciplinesData }, { data: teamsData }, { data: tdData }] = await Promise.all([
       db.from('disciplines').select('id, name, gender').eq('edition_id', editionId),
-      db.from('teams').select('id, name, color').eq('edition_id', editionId).order('name'),
+      db.from('teams').select('id, name, color, logo_url').eq('edition_id', editionId).order('name'),
       db.from('team_disciplines').select('team_id, discipline_id'),
     ])
 
     const allDisciplines: Discipline[] = disciplinesData ?? []
     setDisciplines(allDisciplines)
     setTeams(
-      (teamsData ?? []).map((t: { id: string; name: string; color: string | null }) => ({
+      (teamsData ?? []).map((t: { id: string; name: string; color: string | null; logo_url: string | null }) => ({
         ...t,
         disciplines: allDisciplines.filter((d) =>
           (tdData ?? []).some(
@@ -70,6 +74,8 @@ export default function TeamsTab({ editionId }: { editionId: string }) {
     setEditingTeam(null)
     setForm({ name: '', color: '#3B82F6', grade: '' })
     setSelectedDisciplines([])
+    setLogoFile(null)
+    setLogoPreview('')
     setDialogOpen(true)
   }
 
@@ -77,6 +83,8 @@ export default function TeamsTab({ editionId }: { editionId: string }) {
     setEditingTeam(team)
     setForm({ name: team.name, color: team.color ?? '#3B82F6', grade: (team as Team & { grade?: string }).grade ?? '' })
     setSelectedDisciplines(team.disciplines.map((d) => d.id))
+    setLogoFile(null)
+    setLogoPreview(team.logo_url ?? '')
     setDialogOpen(true)
   }
 
@@ -86,13 +94,35 @@ export default function TeamsTab({ editionId }: { editionId: string }) {
     )
   }
 
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setLogoFile(file)
+    setLogoPreview(URL.createObjectURL(file))
+  }
+
+  async function uploadLogo(teamId: string): Promise<string | null> {
+    if (!logoFile) return null
+    const ext = logoFile.name.split('.').pop() ?? 'png'
+    const path = `${teamId}.${ext}`
+    const { error } = await db.storage.from('team-logos').upload(path, logoFile, { upsert: true })
+    if (error) { toast.error('Error al subir el escudo.'); return null }
+    const { data: { publicUrl } } = db.storage.from('team-logos').getPublicUrl(path)
+    return publicUrl
+  }
+
   async function handleSave() {
     if (!form.name.trim()) { toast.error('El nombre es requerido.'); return }
     if (selectedDisciplines.length === 0) { toast.error('Seleccioná al menos una disciplina.'); return }
     setSaving(true)
 
     if (editingTeam) {
-      const { error } = await db.from('teams').update({ name: form.name, color: form.color, grade: form.grade || null }).eq('id', editingTeam.id)
+      let logoUrl = editingTeam.logo_url
+      if (logoFile) {
+        const uploaded = await uploadLogo(editingTeam.id)
+        if (uploaded) logoUrl = uploaded
+      }
+      const { error } = await db.from('teams').update({ name: form.name, color: form.color, grade: form.grade || null, logo_url: logoUrl }).eq('id', editingTeam.id)
       if (error) { toast.error('Error al actualizar.'); setSaving(false); return }
       await db.from('team_disciplines').delete().eq('team_id', editingTeam.id)
       await db.from('team_disciplines').insert(selectedDisciplines.map((discipline_id) => ({ team_id: editingTeam.id, discipline_id })))
@@ -103,6 +133,10 @@ export default function TeamsTab({ editionId }: { editionId: string }) {
         .insert({ edition_id: editionId, name: form.name, color: form.color, grade: form.grade || null })
         .select('id').single()
       if (error || !newTeam) { toast.error('Error al crear el equipo.'); setSaving(false); return }
+      if (logoFile) {
+        const uploaded = await uploadLogo(newTeam.id)
+        if (uploaded) await db.from('teams').update({ logo_url: uploaded }).eq('id', newTeam.id)
+      }
       await db.from('team_disciplines').insert(selectedDisciplines.map((discipline_id) => ({ team_id: newTeam.id, discipline_id })))
       toast.success('Equipo creado.')
     }
@@ -154,7 +188,7 @@ export default function TeamsTab({ editionId }: { editionId: string }) {
                 <tr key={team.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
-                      <span className="inline-block w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: team.color ?? '#3B82F6' }} />
+                      <TeamLogo logoUrl={team.logo_url} color={team.color} name={team.name} size="sm" />
                       <span className="font-medium">{team.name}</span>
                     </div>
                   </td>
@@ -203,12 +237,36 @@ export default function TeamsTab({ editionId }: { editionId: string }) {
               <Input value={form.grade} onChange={(e) => setForm((p) => ({ ...p, grade: e.target.value }))} placeholder="Ej: 1°, 2°, 3°" />
             </div>
             <div className="space-y-2">
-              <Label>Color</Label>
+              <Label>Color <span className="text-gray-400 font-normal">(se usa si no hay escudo)</span></Label>
               <div className="flex items-center gap-3">
                 <input type="color" value={form.color}
                   onChange={(e) => setForm((p) => ({ ...p, color: e.target.value }))}
                   className="w-10 h-10 rounded cursor-pointer border" />
                 <span className="text-sm text-gray-500">{form.color}</span>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Escudo / Logo</Label>
+              <div className="flex items-center gap-4">
+                {logoPreview ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={logoPreview} alt="preview" className="w-14 h-14 rounded-full object-cover border-2 border-gray-200" />
+                ) : (
+                  <span className="w-14 h-14 rounded-full border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-400 text-xs">Sin logo</span>
+                )}
+                <div className="flex flex-col gap-1">
+                  <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+                    {logoPreview ? 'Cambiar imagen' : 'Subir imagen'}
+                  </Button>
+                  {logoPreview && (
+                    <button type="button" className="text-xs text-red-500 hover:underline text-left"
+                      onClick={() => { setLogoFile(null); setLogoPreview('') }}>
+                      Quitar escudo
+                    </button>
+                  )}
+                  <p className="text-xs text-gray-400">PNG, JPG — recomendado cuadrado</p>
+                </div>
+                <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
               </div>
             </div>
             <div className="space-y-2">

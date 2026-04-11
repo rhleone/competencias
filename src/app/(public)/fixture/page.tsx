@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
 import type { MatchStatus, DisciplineType, GenderType } from '@/types/database'
+import { TeamLogo } from '@/components/ui/team-logo'
 
 const SPORT_LABELS: Record<DisciplineType, string> = {
   football: 'Fútbol', basketball: 'Basketball', volleyball: 'Voleyball', futsal: 'Fútbol Sala',
@@ -18,8 +19,8 @@ interface FixtureMatch {
   home_score: number | null
   away_score: number | null
   bracket_position: string | null
-  home_team: { name: string; color: string | null } | null
-  away_team: { name: string; color: string | null } | null
+  home_team: { name: string; color: string | null; logo_url: string | null } | null
+  away_team: { name: string; color: string | null; logo_url: string | null } | null
   discipline: { id: string; name: DisciplineType; gender: GenderType } | null
   group: { name: string } | null
 }
@@ -65,7 +66,7 @@ export default function FixturePage() {
     try {
       const { data, error: err } = await supabase
         .from('matches')
-        .select('id, scheduled_at, field_number, match_day, status, home_score, away_score, bracket_position, home_team:home_team_id(name, color), away_team:away_team_id(name, color), discipline:discipline_id(id, name, gender), group:group_id(name)')
+        .select('id, scheduled_at, field_number, match_day, status, home_score, away_score, bracket_position, home_team:home_team_id(name, color, logo_url), away_team:away_team_id(name, color, logo_url), discipline:discipline_id(id, name, gender), group:group_id(name)')
         .eq('edition_id', eid)
         .not('scheduled_at', 'is', null)
         .order('scheduled_at')
@@ -301,7 +302,7 @@ function FixtureMatchCard({ match }: { match: FixtureMatch }) {
         {/* Home */}
         <div className={`flex items-center gap-1.5 flex-1 min-w-0 justify-end ${homeWin ? 'font-bold' : ''}`}>
           <span className="truncate text-sm">{match.home_team?.name ?? '?'}</span>
-          <span className="w-3 h-3 rounded-full flex-shrink-0 border border-gray-200" style={{ backgroundColor: match.home_team?.color ?? '#ccc' }} />
+          <TeamLogo logoUrl={match.home_team?.logo_url} color={match.home_team?.color} name={match.home_team?.name} size="xs" />
         </div>
 
         {/* Score / VS */}
@@ -317,7 +318,7 @@ function FixtureMatchCard({ match }: { match: FixtureMatch }) {
 
         {/* Away */}
         <div className={`flex items-center gap-1.5 flex-1 min-w-0 ${awayWin ? 'font-bold' : ''}`}>
-          <span className="w-3 h-3 rounded-full flex-shrink-0 border border-gray-200" style={{ backgroundColor: match.away_team?.color ?? '#ccc' }} />
+          <TeamLogo logoUrl={match.away_team?.logo_url} color={match.away_team?.color} name={match.away_team?.name} size="xs" />
           <span className="truncate text-sm">{match.away_team?.name ?? '?'}</span>
         </div>
       </div>
