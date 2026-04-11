@@ -25,6 +25,8 @@ interface Standing {
   group_id: string
   team_id: string
   team_name: string
+  team_color: string | null
+  team_logo_url: string | null
   played: number
   won: number
   drawn: number
@@ -119,7 +121,7 @@ export default function ResultadosPage() {
       const groupIds = allGroups.map((g) => g.id)
       const { data: standingsData } = await supabase
         .from('standings')
-        .select('group_id, team_id, team_name, played, won, drawn, lost, goals_for, goals_against, goal_difference, points')
+        .select('group_id, team_id, team_name, team_color, team_logo_url, played, won, drawn, lost, goals_for, goals_against, goal_difference, points')
         .in('group_id', groupIds)
       setStandings((standingsData as Standing[]) ?? [])
     }
@@ -401,8 +403,11 @@ export default function ResultadosPage() {
                             {groupStandings.map((s, i) => (
                               <tr key={s.team_id} className={i === 0 && s.played > 0 ? 'bg-yellow-50' : 'hover:bg-gray-50'}>
                                 <td className="px-4 py-2.5 font-medium">
-                                  <span className="text-gray-400 text-xs mr-2">{i + 1}.</span>
-                                  {s.team_name}
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-gray-400 text-xs">{i + 1}.</span>
+                                    <TeamLogo logoUrl={s.team_logo_url} color={s.team_color} name={s.team_name} size="xs" />
+                                    {s.team_name}
+                                  </div>
                                 </td>
                                 <td className="px-2 py-2.5 text-center text-gray-500">{s.played}</td>
                                 <td className="px-2 py-2.5 text-center text-green-600 font-medium">{s.won}</td>
