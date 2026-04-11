@@ -7,10 +7,10 @@ interface TeamLogoProps {
 }
 
 const SIZES = {
-  xs: 'w-3 h-3',
-  sm: 'w-5 h-5',
-  md: 'w-8 h-8',
-  lg: 'w-10 h-10',
+  xs: 'w-5 h-5',
+  sm: 'w-7 h-7',
+  md: 'w-10 h-10',
+  lg: 'w-12 h-12',
 }
 
 export function TeamLogo({ logoUrl, color, name, size = 'sm', className = '' }: TeamLogoProps) {
