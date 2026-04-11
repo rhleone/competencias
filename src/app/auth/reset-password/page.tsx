@@ -1,8 +1,6 @@
 'use client'
 
-export const dynamic = 'force-dynamic'
-
-import { useState, useEffect } from 'react'
+import { Suspense, useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
@@ -11,7 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
-export default function ResetPasswordPage() {
+function ResetPasswordForm() {
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [loading, setLoading] = useState(false)
@@ -83,76 +81,86 @@ export default function ResetPasswordPage() {
 
   if (!sessionReady) {
     return (
-      <main className="min-h-screen bg-gradient-to-br from-blue-900 to-blue-700 flex items-center justify-center p-4">
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle>Restablecer contraseña</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-gray-500">Verificando link de recuperación...</p>
-            <p className="text-xs text-gray-400">
-              Si este mensaje persiste, el link puede haber expirado.{' '}
-              <Link href="/auth/forgot-password" className="text-blue-600 hover:underline">
-                Solicitá uno nuevo.
-              </Link>
-            </p>
-          </CardContent>
-        </Card>
-      </main>
+      <Card className="w-full max-w-md">
+        <CardHeader>
+          <CardTitle>Restablecer contraseña</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-gray-500">Verificando link de recuperación...</p>
+          <p className="text-xs text-gray-400">
+            Si este mensaje persiste, el link puede haber expirado.{' '}
+            <Link href="/auth/forgot-password" className="text-blue-600 hover:underline">
+              Solicitá uno nuevo.
+            </Link>
+          </p>
+        </CardContent>
+      </Card>
     )
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-blue-900 to-blue-700 flex items-center justify-center p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle>Nueva contraseña</CardTitle>
-          <CardDescription>Ingresá tu nueva contraseña.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {done ? (
-            <div className="space-y-4">
-              <p className="text-sm text-green-700 bg-green-50 p-3 rounded-md">
-                ✓ Contraseña actualizada correctamente. Redirigiendo al inicio de sesión...
-              </p>
+    <Card className="w-full max-w-md">
+      <CardHeader>
+        <CardTitle>Nueva contraseña</CardTitle>
+        <CardDescription>Ingresá tu nueva contraseña.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {done ? (
+          <p className="text-sm text-green-700 bg-green-50 p-3 rounded-md">
+            ✓ Contraseña actualizada correctamente. Redirigiendo al inicio de sesión...
+          </p>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="password">Nueva contraseña</Label>
+              <Input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                placeholder="••••••••"
+              />
             </div>
-          ) : (
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="password">Nueva contraseña</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  placeholder="••••••••"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="confirm">Confirmar contraseña</Label>
-                <Input
-                  id="confirm"
-                  type="password"
-                  value={confirm}
-                  onChange={(e) => setConfirm(e.target.value)}
-                  required
-                  placeholder="••••••••"
-                />
-              </div>
-              {error && (
-                <p className="text-sm text-red-600 bg-red-50 p-3 rounded-md">{error}</p>
-              )}
-              <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? 'Guardando...' : 'Guardar nueva contraseña'}
-              </Button>
-              <Link href="/auth/login" className="block text-center text-sm text-blue-600 hover:underline">
-                Cancelar
-              </Link>
-            </form>
-          )}
-        </CardContent>
-      </Card>
+            <div className="space-y-2">
+              <Label htmlFor="confirm">Confirmar contraseña</Label>
+              <Input
+                id="confirm"
+                type="password"
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+                required
+                placeholder="••••••••"
+              />
+            </div>
+            {error && (
+              <p className="text-sm text-red-600 bg-red-50 p-3 rounded-md">{error}</p>
+            )}
+            <Button type="submit" className="w-full" disabled={loading}>
+              {loading ? 'Guardando...' : 'Guardar nueva contraseña'}
+            </Button>
+            <Link href="/auth/login" className="block text-center text-sm text-blue-600 hover:underline">
+              Cancelar
+            </Link>
+          </form>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+export default function ResetPasswordPage() {
+  return (
+    <main className="min-h-screen bg-gradient-to-br from-blue-900 to-blue-700 flex items-center justify-center p-4">
+      <Suspense fallback={
+        <Card className="w-full max-w-md">
+          <CardContent className="py-8">
+            <p className="text-sm text-gray-500 text-center">Cargando...</p>
+          </CardContent>
+        </Card>
+      }>
+        <ResetPasswordForm />
+      </Suspense>
     </main>
   )
 }
