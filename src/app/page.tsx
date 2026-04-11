@@ -74,7 +74,7 @@ export default async function HomePage() {
           </div>
         )}
 
-        {/* CTAs */}
+        {/* CTAs públicos */}
         <div className="flex flex-col sm:flex-row gap-3 w-full max-w-sm">
           <Link
             href="/resultados"
@@ -90,12 +90,18 @@ export default async function HomePage() {
           </Link>
         </div>
 
-        <Link
-          href="/auth/login"
-          className="mt-6 text-sm text-blue-300 hover:text-white transition"
-        >
-          Ingresar al sistema →
-        </Link>
+        {/* Acceso operadores/admin */}
+        <div className="mt-8 w-full max-w-sm">
+          <div className="border-t border-white/10 pt-6 flex flex-col items-center gap-2">
+            <p className="text-xs text-blue-400 uppercase tracking-widest font-medium">Acceso staff</p>
+            <Link
+              href="/auth/login"
+              className="w-full bg-white/10 border border-white/20 text-white px-6 py-3 rounded-xl font-semibold text-center hover:bg-white/20 transition text-sm"
+            >
+              Ingresar como operador / admin →
+            </Link>
+          </div>
+        </div>
       </div>
 
       {/* Bottom strip */}
