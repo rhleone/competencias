@@ -1,0 +1,19 @@
+{
+  "name": "Juegos Belgranianos",
+  "short_name": "Belgranianos",
+  "description": "Campeonato Escolar Oficial — resultados en vivo, posiciones y fixture",
+  "start_url": "/resultados",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1e3a8a",
+  "theme_color": "#1e3a8a",
+  "lang": "es",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Resultados de hoy", "url": "/resultados", "description": "Ver partidos del día" },
+    { "name": "Fixture completo", "url": "/fixture", "description": "Ver todos los partidos" }
+  ]
+}

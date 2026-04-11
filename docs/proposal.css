@@ -1,0 +1,88 @@
+body {
+  font-family: 'Segoe UI', Arial, sans-serif;
+  font-size: 13px;
+  color: #1a1a2e;
+  line-height: 1.65;
+}
+h1 {
+  font-size: 24px;
+  color: #1e3a5f;
+  border-bottom: 3px solid #1e3a5f;
+  padding-bottom: 10px;
+  margin-top: 0;
+}
+h2 {
+  font-size: 17px;
+  color: #1e3a5f;
+  border-bottom: 1px solid #c8d8e8;
+  padding-bottom: 5px;
+  margin-top: 30px;
+}
+h3 {
+  font-size: 14px;
+  color: #2c5f8a;
+  margin-top: 20px;
+}
+h4 {
+  font-size: 13px;
+  color: #444;
+  margin-top: 14px;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 12px 0;
+  font-size: 12px;
+}
+th {
+  background-color: #1e3a5f;
+  color: white;
+  padding: 7px 10px;
+  text-align: left;
+}
+td {
+  padding: 6px 10px;
+  border-bottom: 1px solid #e0e8f0;
+}
+tr:nth-child(even) td {
+  background-color: #f4f8fc;
+}
+blockquote {
+  border-left: 4px solid #1e3a5f;
+  padding: 8px 16px;
+  margin: 0 0 14px 0;
+  background: #f0f5fb;
+  color: #2c5f8a;
+  border-radius: 0 6px 6px 0;
+}
+code {
+  background: #f0f4f8;
+  padding: 2px 5px;
+  border-radius: 3px;
+  font-size: 11px;
+  color: #c0392b;
+}
+pre {
+  background: #f6f8fa;
+  border: 1px solid #dde5ee;
+  border-radius: 6px;
+  padding: 12px 14px;
+  font-size: 11px;
+  overflow-x: auto;
+}
+pre code {
+  background: none;
+  padding: 0;
+  color: #333;
+}
+hr {
+  border: none;
+  border-top: 1px solid #dde5ee;
+  margin: 22px 0;
+}
+ul, ol {
+  padding-left: 20px;
+}
+li {
+  margin-bottom: 4px;
+}
