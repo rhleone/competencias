@@ -36,7 +36,11 @@ export default function EditEditionPage({ params }: { params: Promise<{ id: stri
 
   useEffect(() => {
     async function load() {
-      const { data } = await supabase.from('editions').select('*').eq('id', id).single()
+      const { data } = await db
+        .from('editions')
+        .select('id, name, year, status, start_date, end_date, image_url')
+        .eq('id', id)
+        .single()
       if (data) {
         const edition = data as Edition
         setForm({
@@ -70,7 +74,10 @@ export default function EditEditionPage({ params }: { params: Promise<{ id: stri
     const ext = imageFile.name.split('.').pop()
     const path = `${id}.${ext}`
     const { error } = await db.storage.from('edition-covers').upload(path, imageFile, { upsert: true })
-    if (error) return null
+    if (error) {
+      toast.error(`Error al subir la imagen: ${error.message}`)
+      return null
+    }
     const { data: { publicUrl } } = db.storage.from('edition-covers').getPublicUrl(path)
     return publicUrl
   }

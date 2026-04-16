@@ -3,6 +3,7 @@
 import { useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -43,7 +44,10 @@ export default function NewEditionPage() {
     const ext = imageFile.name.split('.').pop()
     const path = `${editionId}.${ext}`
     const { error } = await db.storage.from('edition-covers').upload(path, imageFile, { upsert: true })
-    if (error) return null
+    if (error) {
+      toast.error(`Error al subir la imagen: ${error.message}`)
+      return null
+    }
     const { data: { publicUrl } } = db.storage.from('edition-covers').getPublicUrl(path)
     return publicUrl
   }
