@@ -1,5 +1,4 @@
 import Link from 'next/link'
-import Image from 'next/image'
 import { createClient } from '@/lib/supabase/server'
 import type { EditionStatus } from '@/types/database'
 
@@ -74,13 +73,13 @@ export default async function HomePage() {
             >
               <div className="bg-white text-gray-800 rounded-2xl overflow-hidden shadow-2xl transition-transform duration-300 hover:-translate-y-2 cursor-pointer">
                 {/* Cover image */}
-                <div className="relative w-full h-44 bg-gray-200">
+                <div className="w-full h-44 bg-gray-200 overflow-hidden">
                   {edition.image_url ? (
-                    <Image
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
                       src={edition.image_url}
                       alt={edition.name}
-                      fill
-                      className="object-cover"
+                      className="w-full h-full object-cover"
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-100 to-blue-200">
