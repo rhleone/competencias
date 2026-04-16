@@ -4,6 +4,7 @@ import { Suspense, useState, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
+import { APP_NAME } from '@/lib/app-config'
 import type { MatchStatus, DisciplineType, GenderType } from '@/types/database'
 import { TeamLogo } from '@/components/ui/team-logo'
 
@@ -254,8 +255,15 @@ function ResultadosContent() {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-blue-900 text-white px-6 py-5">
-        <h1 className="text-2xl font-bold">Competencias Deportivas</h1>
-        <p className="text-blue-300 text-sm mt-0.5">{editionName || 'Resultados en Vivo'}</p>
+        <div className="max-w-4xl mx-auto flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold">{APP_NAME}</h1>
+            <p className="text-blue-300 text-sm mt-0.5">{editionName || 'Resultados en Vivo'}</p>
+          </div>
+          <Link href="/" className="text-sm text-blue-300 hover:text-white transition">
+            ← Inicio
+          </Link>
+        </div>
       </header>
 
       {/* Tabs */}

@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import type { Database, UserRole, EditionStatus } from '@/types/database'
+import { APP_NAME } from '@/lib/app-config'
 
 type Edition = Database['public']['Tables']['editions']['Row']
 
@@ -51,7 +52,7 @@ export default async function AdminDashboard() {
       <div className="mb-8">
         <h1 className="text-3xl font-bold">Panel de Administración</h1>
         <p className="text-gray-500 mt-1">
-          Competencias Deportivas
+          {APP_NAME}
           {profile?.full_name && <span className="ml-2 text-gray-400">· {profile.full_name}</span>}
         </p>
       </div>

@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import type { EditionStatus } from '@/types/database'
+import { APP_NAME } from '@/lib/app-config'
 
 type EditionCard = {
   id: string
@@ -53,7 +54,7 @@ export default async function HomePage() {
 
       {/* Header */}
       <header className="text-center px-5 py-10">
-        <h1 className="text-4xl font-black mb-2">Competencias Deportivas</h1>
+        <h1 className="text-4xl font-black mb-2">{APP_NAME}</h1>
         <p className="text-blue-200 text-base">Competiciones deportivas</p>
       </header>
 

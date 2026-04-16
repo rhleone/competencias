@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import type { UserRole } from '@/types/database'
+import { APP_NAME } from '@/lib/app-config'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -59,7 +60,7 @@ export default function LoginPage() {
     <main className="min-h-screen bg-gradient-to-br from-blue-900 to-blue-700 flex items-center justify-center p-4">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle>Competencias Deportivas</CardTitle>
+          <CardTitle>{APP_NAME}</CardTitle>
           <CardDescription>Ingresá con tus credenciales</CardDescription>
         </CardHeader>
         <CardContent>
