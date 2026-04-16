@@ -3,6 +3,7 @@
 import { Suspense, useState, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import Link from 'next/link'
 import type { MatchStatus, DisciplineType, GenderType } from '@/types/database'
 import { TeamLogo } from '@/components/ui/team-logo'
 
@@ -259,7 +260,7 @@ function ResultadosContent() {
 
       {/* Tabs */}
       <div className="bg-white border-b px-6">
-        <div className="flex gap-0 max-w-4xl mx-auto">
+        <div className="flex gap-0 max-w-4xl mx-auto items-center">
           {[
             { key: 'hoy', label: 'Partidos de Hoy' },
             { key: 'posiciones', label: 'Posiciones' },
@@ -273,6 +274,12 @@ function ResultadosContent() {
               {label}
             </button>
           ))}
+          <Link
+            href={editionId ? `/fixture?edition=${editionId}` : '/fixture'}
+            className="ml-auto text-sm text-gray-400 hover:text-blue-700 transition py-3.5 border-b-2 border-transparent"
+          >
+            Fixture completo →
+          </Link>
         </div>
       </div>
 
