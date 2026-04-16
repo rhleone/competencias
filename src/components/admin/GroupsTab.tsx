@@ -244,6 +244,17 @@ export default function GroupsTab({ editionId }: Props) {
     return allTeams.filter((t) => teamIds.includes(t.id))
   }
 
+  // Teams in a discipline that are NOT yet assigned to another group
+  // (teams already in `currentGroupId` are kept so they stay selectable)
+  const availableTeamsForGroup = (disciplineId: string, currentGroupId: string) => {
+    const takenTeamIds = new Set(
+      groups
+        .filter((g) => g.discipline_id === disciplineId && g.id !== currentGroupId)
+        .flatMap((g) => g.teamIds)
+    )
+    return disciplineTeams(disciplineId).filter((t) => !takenTeamIds.has(t.id))
+  }
+
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
@@ -377,10 +388,10 @@ export default function GroupsTab({ editionId }: Props) {
             <DialogTitle>Asignar equipos a {assignGroup?.name}</DialogTitle>
           </DialogHeader>
           <div className="py-2 space-y-2 max-h-72 overflow-y-auto">
-            {assignGroup && disciplineTeams(assignGroup.discipline_id).length === 0 ? (
-              <p className="text-sm text-gray-500">No hay equipos en esta disciplina.</p>
+            {assignGroup && availableTeamsForGroup(assignGroup.discipline_id, assignGroup.id).length === 0 ? (
+              <p className="text-sm text-gray-500">No hay equipos disponibles para asignar.</p>
             ) : (
-              disciplineTeams(assignGroup?.discipline_id ?? '').map((t) => (
+              availableTeamsForGroup(assignGroup?.discipline_id ?? '', assignGroup?.id ?? '').map((t) => (
                 <label key={t.id} className="flex items-center gap-3 p-2 rounded hover:bg-gray-50 cursor-pointer">
                   <input
                     type="checkbox"
