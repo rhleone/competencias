@@ -5,7 +5,6 @@ import { usePathname } from 'next/navigation'
 
 const navItems = [
   { href: '/admin', label: 'Panel', exact: true },
-  { href: '/resultados', label: 'Ver resultados ↗', exact: false, external: true },
 ]
 
 export default function AdminNav() {
