@@ -242,19 +242,27 @@ function teamMatchCountOnDate(
   ).length
 }
 
-type TimeBucket = 'morning' | 'midday' | 'afternoon'
+type TimeBucket = 'early' | 'mid' | 'late'
 
 /**
- * Classify a time string (HH:MM) into a broad time bucket.
- * morning  : 06:00 – 11:59
- * midday   : 12:00 – 14:59
- * afternoon: 15:00 onwards
+ * Classify a time string (HH:MM) into one of three equal buckets relative
+ * to the discipline's own playing window [dailyStart, dailyEnd].
+ *
+ * early : first third  of the window
+ * mid   : second third of the window
+ * late  : last third   of the window
+ *
+ * Using relative thirds means the distribution works correctly regardless
+ * of whether a discipline plays in the morning, afternoon, or evening.
  */
-function getTimeBucket(time: string): TimeBucket {
-  const minutes = timeToMinutes(time)
-  if (minutes < 12 * 60) return 'morning'
-  if (minutes < 15 * 60) return 'midday'
-  return 'afternoon'
+function getTimeBucket(time: string, dailyStart: string, dailyEnd: string): TimeBucket {
+  const t = timeToMinutes(time)
+  const start = timeToMinutes(dailyStart)
+  const end = timeToMinutes(dailyEnd)
+  const third = (end - start) / 3
+  if (t < start + third) return 'early'
+  if (t < start + 2 * third) return 'mid'
+  return 'late'
 }
 
 /**
@@ -294,9 +302,11 @@ function recordBucketAssignment(
 function equityCost(
   pair: MatchPair,
   slot: TimeSlot,
-  bucketCounts: Map<string, Map<TimeBucket, number>>
+  bucketCounts: Map<string, Map<TimeBucket, number>>,
+  dailyStart: string,
+  dailyEnd: string
 ): number {
-  const bucket = getTimeBucket(slot.startTime)
+  const bucket = getTimeBucket(slot.startTime, dailyStart, dailyEnd)
   return Math.max(
     teamBucketCount(pair.homeTeamId, bucket, pair.disciplineId, bucketCounts),
     teamBucketCount(pair.awayTeamId, bucket, pair.disciplineId, bucketCounts)
@@ -358,13 +368,14 @@ export function scheduleMatches(
 
     // Pick the valid slot with the lowest equity cost.
     // Ties: prefer earlier date, then earlier start time.
+    const { daily_start_time: dayStart, daily_end_time: dayEnd } = disciplineConfig
     let bestIndex = validIndices[0]
-    let bestCost = equityCost(pair, availableSlots[bestIndex], bucketCounts)
+    let bestCost = equityCost(pair, availableSlots[bestIndex], bucketCounts, dayStart, dayEnd)
 
     for (let k = 1; k < validIndices.length; k++) {
       const idx = validIndices[k]
       const slot = availableSlots[idx]
-      const cost = equityCost(pair, slot, bucketCounts)
+      const cost = equityCost(pair, slot, bucketCounts, dayStart, dayEnd)
 
       if (cost < bestCost) {
         bestCost = cost
@@ -385,7 +396,7 @@ export function scheduleMatches(
     assignments.push({ matchPair: pair, slot: chosenSlot })
     assignedSlots.push(chosenSlot)
     availableSlots.splice(bestIndex, 1)
-    recordBucketAssignment(pair, getTimeBucket(chosenSlot.startTime), bucketCounts)
+    recordBucketAssignment(pair, getTimeBucket(chosenSlot.startTime, dayStart, dayEnd), bucketCounts)
   }
 
   return { assignments, unscheduled }
