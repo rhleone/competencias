@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { Suspense, useState, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { MatchStatus, DisciplineType, GenderType } from '@/types/database'
@@ -77,6 +77,14 @@ function gCls(gender: string) {
 function toTime(s: string) { return s.split('T')[1]?.slice(0, 5) ?? '' }
 
 export default function ResultadosPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-gray-50 flex items-center justify-center"><p className="text-gray-400">Cargando...</p></div>}>
+      <ResultadosContent />
+    </Suspense>
+  )
+}
+
+function ResultadosContent() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabase = createClient() as any
   const searchParams = useSearchParams()
