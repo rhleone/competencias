@@ -12,15 +12,14 @@ export default function AdminNav() {
 
   return (
     <nav className="flex-1 p-4 space-y-1">
-      {navItems.map(({ href, label, exact, external }) => {
+      {navItems.map(({ href, label, exact }) => {
         const isActive = exact ? pathname === href : pathname.startsWith(href)
         return (
           <Link
             key={href}
             href={href}
-            target={external ? '_blank' : undefined}
             className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition ${
-              isActive && !external
+              isActive
                 ? 'bg-blue-50 text-blue-700'
                 : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
             }`}
