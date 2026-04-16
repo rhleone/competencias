@@ -1,6 +1,6 @@
-# Juegos Belgranianos
+# Competencias Deportivas
 
-Plataforma web oficial del campeonato escolar **Juegos Belgranianos**. Permite gestionar ediciones, disciplinas, equipos, fixture y resultados en tiempo real.
+Plataforma web oficial de **Competencias Deportivas**. Permite gestionar ediciones, disciplinas, equipos, fixture y resultados en tiempo real.
 
 ## Stack
 

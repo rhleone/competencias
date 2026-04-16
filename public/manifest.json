@@ -1,7 +1,7 @@
 {
-  "name": "Juegos Belgranianos",
-  "short_name": "Belgranianos",
-  "description": "Campeonato Escolar Oficial — resultados en vivo, posiciones y fixture",
+  "name": "Competencias Deportivas",
+  "short_name": "Comp. Deportivas",
+  "description": "Competencias Deportivas — resultados en vivo, posiciones y fixture",
   "start_url": "/resultados",
   "display": "standalone",
   "orientation": "portrait",

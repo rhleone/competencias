@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
@@ -16,6 +16,9 @@ export default function NewEditionPage() {
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [imageFile, setImageFile] = useState<File | null>(null)
+  const [imagePreview, setImagePreview] = useState<string>('')
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [form, setForm] = useState({
     name: '',
     year: new Date().getFullYear(),
@@ -26,6 +29,23 @@ export default function NewEditionPage() {
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     const { name, value } = e.target
     setForm((prev) => ({ ...prev, [name]: name === 'year' ? parseInt(value) : value }))
+  }
+
+  function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setImageFile(file)
+    setImagePreview(URL.createObjectURL(file))
+  }
+
+  async function uploadImage(editionId: string): Promise<string | null> {
+    if (!imageFile) return null
+    const ext = imageFile.name.split('.').pop()
+    const path = `${editionId}.${ext}`
+    const { error } = await db.storage.from('edition-covers').upload(path, imageFile, { upsert: true })
+    if (error) return null
+    const { data: { publicUrl } } = db.storage.from('edition-covers').getPublicUrl(path)
+    return publicUrl
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -39,18 +59,25 @@ export default function NewEditionPage() {
       return
     }
 
-    const { error: insertError } = await db.from('editions').insert({
+    const { data: newEdition, error: insertError } = await db.from('editions').insert({
       name: form.name,
       year: form.year,
       start_date: form.start_date,
       end_date: form.end_date,
       status: 'draft',
-    })
+    }).select('id').single()
 
     if (insertError) {
       setError(`Error al crear la edición: ${insertError.message}`)
       setLoading(false)
       return
+    }
+
+    if (imageFile && newEdition?.id) {
+      const imageUrl = await uploadImage(newEdition.id)
+      if (imageUrl) {
+        await db.from('editions').update({ image_url: imageUrl }).eq('id', newEdition.id)
+      }
     }
 
     router.push('/admin')
@@ -77,7 +104,7 @@ export default function NewEditionPage() {
                 value={form.name}
                 onChange={handleChange}
                 required
-                placeholder="Ej: Juegos Belgranianos 2026"
+                placeholder="Ej: Competencias Deportivas 2026"
               />
             </div>
 
@@ -118,6 +145,45 @@ export default function NewEditionPage() {
                   required
                 />
               </div>
+            </div>
+
+            {/* Imagen de portada */}
+            <div className="space-y-2">
+              <Label>Imagen de portada</Label>
+              {imagePreview && (
+                <img
+                  src={imagePreview}
+                  alt="Preview"
+                  className="w-full h-40 object-cover rounded-lg border mb-2"
+                />
+              )}
+              <div className="flex items-center gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  {imagePreview ? 'Cambiar imagen' : 'Subir imagen'}
+                </Button>
+                {imagePreview && (
+                  <button
+                    type="button"
+                    className="text-xs text-red-500 hover:underline"
+                    onClick={() => { setImageFile(null); setImagePreview('') }}
+                  >
+                    Quitar
+                  </button>
+                )}
+                <span className="text-xs text-gray-400">JPG, PNG o WebP</span>
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleImageChange}
+              />
             </div>
 
             {error && (

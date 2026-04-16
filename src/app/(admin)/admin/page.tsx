@@ -51,7 +51,7 @@ export default async function AdminDashboard() {
       <div className="mb-8">
         <h1 className="text-3xl font-bold">Panel de Administración</h1>
         <p className="text-gray-500 mt-1">
-          Juegos Belgranianos
+          Competencias Deportivas
           {profile?.full_name && <span className="ml-2 text-gray-400">· {profile.full_name}</span>}
         </p>
       </div>

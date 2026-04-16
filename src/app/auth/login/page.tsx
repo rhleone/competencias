@@ -59,7 +59,7 @@ export default function LoginPage() {
     <main className="min-h-screen bg-gradient-to-br from-blue-900 to-blue-700 flex items-center justify-center p-4">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle>Juegos Belgranianos</CardTitle>
+          <CardTitle>Competencias Deportivas</CardTitle>
           <CardDescription>Ingresá con tus credenciales</CardDescription>
         </CardHeader>
         <CardContent>

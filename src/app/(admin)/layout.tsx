@@ -25,7 +25,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       {/* Sidebar */}
       <aside className="w-60 bg-white border-r flex flex-col flex-shrink-0">
         <div className="p-5 border-b">
-          <h1 className="text-base font-bold text-gray-900 leading-tight">Juegos Belgranianos</h1>
+          <h1 className="text-base font-bold text-gray-900 leading-tight">Competencias Deportivas</h1>
           <p className="text-xs text-gray-500 mt-0.5">Administración</p>
         </div>
         <AdminNav />

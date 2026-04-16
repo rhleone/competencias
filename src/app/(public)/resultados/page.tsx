@@ -231,7 +231,7 @@ export default function ResultadosPage() {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-blue-900 text-white px-6 py-5">
-        <h1 className="text-2xl font-bold">Juegos Belgranianos</h1>
+        <h1 className="text-2xl font-bold">Competencias Deportivas</h1>
         <p className="text-blue-300 text-sm mt-0.5">{editionName || 'Resultados en Vivo'}</p>
       </header>
 

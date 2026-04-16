@@ -2,8 +2,8 @@ import type { Metadata, Viewport } from 'next'
 import './globals.css'
 import { Providers } from '@/components/providers'
 
-const APP_NAME = 'Juegos Belgranianos'
-const APP_DESCRIPTION = 'Campeonato Escolar Oficial — resultados en vivo, posiciones y fixture'
+const APP_NAME = 'Competencias Deportivas'
+const APP_DESCRIPTION = 'Competencias Deportivas — resultados en vivo, posiciones y fixture'
 
 export const metadata: Metadata = {
   applicationName: APP_NAME,

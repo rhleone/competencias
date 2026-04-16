@@ -24,7 +24,7 @@ export default async function OperatorLayout({ children }: { children: React.Rea
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b px-6 py-3 flex items-center justify-between">
         <div>
-          <span className="font-bold text-gray-900">Juegos Belgranianos</span>
+          <span className="font-bold text-gray-900">Competencias Deportivas</span>
           <span className="text-gray-400 mx-2">·</span>
           <span className="text-sm text-gray-500">Carga de Resultados</span>
         </div>

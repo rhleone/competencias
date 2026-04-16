@@ -32,6 +32,7 @@ export interface Database {
           status: EditionStatus
           start_date: string
           end_date: string
+          image_url: string | null
           created_at: string
           updated_at: string
         }

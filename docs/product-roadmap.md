@@ -6,8 +6,8 @@ pdf_options:
 stylesheet: ./proposal.css
 ---
 
-# Juegos Belgranianos
-## Plataforma Digital del Campeonato Escolar
+# Competencias Deportivas
+## Plataforma Digital de Competencias Deportivas
 ### Product Roadmap & Plan de Aplicación Móvil
 
 > **Documento de propuesta** · Versión 1.0 · Marzo 2026
@@ -122,11 +122,11 @@ Enviar notificación cuando un partido inicia o finaliza.
 ### 2.5 Compartir resultado individual
 - Botón "Compartir" en cada tarjeta de resultado
 - Genera imagen con el score estilo "story" usando `html2canvas` o Supabase Edge Function
-- **Valor**: viralidad orgánica en WhatsApp/Instagram del colegio
+- **Valor**: viralidad orgánica en WhatsApp/Instagram del evento
 
 ### 2.6 Panel de TV / Modo pantalla completa
 - Vista `/tv` sin navegación, rotación automática entre disciplinas en vivo
-- Diseñada para proyectar en pantallas en el colegio durante el evento
+- Diseñada para proyectar en pantallas durante el evento
 - **Valor**: experiencia presencial profesional
 
 ### 2.7 Estadísticas del campeonato
@@ -205,8 +205,8 @@ belgraneanos-mobile/         ← repositorio separado
 Crear `src/app/manifest.json`:
 ```json
 {
-  "name": "Juegos Belgranianos",
-  "short_name": "Belgranianos",
+  "name": "Competencias Deportivas",
+  "short_name": "Comp. Deportivas",
   "start_url": "/resultados",
   "display": "standalone",
   "background_color": "#1e3a5f",
@@ -252,7 +252,7 @@ Para cachear la shell y funcionar offline.
 - Notificaciones push con Expo Notifications
 
 #### Semana 3 — Polish
-- Íconos, splash screen, colores del colegio
+- Íconos, splash screen, colores del evento
 - Build para Android (APK/AAB via EAS Build)
 - Build para iOS (requiere cuenta de desarrollador Apple)
 - Publicación en Play Store (Google Play — ~USD 25 único)
@@ -261,18 +261,18 @@ Para cachear la shell y funcionar offline.
 
 ### 3.5 Distribución recomendada
 
-Para un campeonato escolar, **la PWA es suficiente en la mayoría de los casos**:
+Para competencias deportivas, **la PWA es suficiente en la mayoría de los casos**:
 
 ```
 QR code → link → /resultados → "Agregar a inicio"
 ```
 
-Los padres y alumnos no necesitan ir al App Store. Se distribuye por WhatsApp en los grupos del colegio.
+Los participantes no necesitan ir al App Store. Se distribuye por WhatsApp en los grupos del evento.
 
 La app Expo tiene sentido si:
 - Se quiere publicar en Play Store / App Store formalmente
 - Se necesitan notificaciones push reales (especialmente en iOS)
-- El campeonato crece y se convierte en una plataforma permanente del colegio
+- La competencia crece y se convierte en una plataforma permanente
 
 ---
 
