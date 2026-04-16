@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { MatchStatus, DisciplineType, GenderType } from '@/types/database'
 import { TeamLogo } from '@/components/ui/team-logo'
@@ -78,6 +79,8 @@ function toTime(s: string) { return s.split('T')[1]?.slice(0, 5) ?? '' }
 export default function ResultadosPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabase = createClient() as any
+  const searchParams = useSearchParams()
+  const editionParam = searchParams.get('edition')
   const [tab, setTab] = useState<Tab>('hoy')
   const [editionId, setEditionId] = useState<string | null>(null)
   const [editionName, setEditionName] = useState('')
@@ -133,22 +136,33 @@ export default function ResultadosPage() {
       try {
         let edition: { id: string; name: string; status: string } | null = null
 
-        const { data: active } = await supabase
-          .from('editions')
-          .select('id, name, status')
-          .eq('status', 'active')
-          .maybeSingle()
-
-        if (active) {
-          edition = active
-        } else {
-          const { data: latest } = await supabase
+        if (editionParam) {
+          // Load specific edition from URL param
+          const { data } = await supabase
             .from('editions')
             .select('id, name, status')
-            .order('year', { ascending: false })
-            .limit(1)
+            .eq('id', editionParam)
             .maybeSingle()
-          edition = latest
+          edition = data
+        } else {
+          // Fallback: active edition or latest
+          const { data: active } = await supabase
+            .from('editions')
+            .select('id, name, status')
+            .eq('status', 'active')
+            .maybeSingle()
+
+          if (active) {
+            edition = active
+          } else {
+            const { data: latest } = await supabase
+              .from('editions')
+              .select('id, name, status')
+              .order('year', { ascending: false })
+              .limit(1)
+              .maybeSingle()
+            edition = latest
+          }
         }
 
         if (edition) {
@@ -165,7 +179,7 @@ export default function ResultadosPage() {
       }
     }
     init()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [editionParam]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadBracketMatches = useCallback(async (eid: string) => {
     setLoadingBracket(true)

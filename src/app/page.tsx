@@ -68,7 +68,7 @@ export default async function HomePage() {
           editions.map((edition) => (
             <Link
               key={edition.id}
-              href={edition.status !== 'draft' ? `/resultados` : '#'}
+              href={edition.status !== 'draft' ? `/resultados?edition=${edition.id}` : '#'}
               className="block"
             >
               <div className="bg-white text-gray-800 rounded-2xl overflow-hidden shadow-2xl transition-transform duration-300 hover:-translate-y-2 cursor-pointer">
