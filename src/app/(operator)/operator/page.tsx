@@ -3,15 +3,22 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
-import type { MatchStatus, DisciplineType } from '@/types/database'
+import type { MatchStatus, DisciplineType, EditionStatus } from '@/types/database'
 import { TeamLogo } from '@/components/ui/team-logo'
 
 const SPORT_LABELS: Record<DisciplineType, string> = {
   football: 'Fútbol', basketball: 'Basketball', volleyball: 'Voleyball', futsal: 'Fútbol Sala',
 }
 
+interface Edition {
+  id: string
+  name: string
+  status: EditionStatus
+}
+
 interface DashboardMatch {
   id: string
+  edition_id: string
   scheduled_at: string | null
   field_number: number | null
   status: MatchStatus
@@ -20,6 +27,7 @@ interface DashboardMatch {
   home_team: { name: string; color: string | null; logo_url: string | null } | null
   away_team: { name: string; color: string | null; logo_url: string | null } | null
   discipline: { name: DisciplineType; gender: string } | null
+  edition: { name: string } | null
 }
 
 function StatusBadge({ status }: { status: MatchStatus }) {
@@ -36,21 +44,42 @@ function StatusBadge({ status }: { status: MatchStatus }) {
 export default function OperatorDashboard() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabase = createClient() as any
+  const [editions, setEditions] = useState<Edition[]>([])
+  const [selectedEdition, setSelectedEdition] = useState<string>('all')
   const [matches, setMatches] = useState<DashboardMatch[]>([])
   const [loading, setLoading] = useState(true)
   const today = new Date().toISOString().split('T')[0]
 
+  useEffect(() => {
+    async function loadEditions() {
+      const { data } = await supabase
+        .from('editions')
+        .select('id, name, status')
+        .in('status', ['active', 'draft'])
+        .order('year', { ascending: false })
+      setEditions((data as Edition[]) ?? [])
+    }
+    loadEditions()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   const loadMatches = useCallback(async () => {
-    const { data } = await supabase
+    setLoading(true)
+    let query = supabase
       .from('matches')
-      .select('id, scheduled_at, field_number, status, home_score, away_score, home_team:home_team_id(name, color, logo_url), away_team:away_team_id(name, color, logo_url), discipline:discipline_id(name, gender)')
+      .select('id, edition_id, scheduled_at, field_number, status, home_score, away_score, home_team:home_team_id(name, color, logo_url), away_team:away_team_id(name, color, logo_url), discipline:discipline_id(name, gender), edition:edition_id(name)')
       .gte('scheduled_at', `${today}T00:00:00`)
       .lte('scheduled_at', `${today}T23:59:59`)
       .neq('status', 'postponed')
       .order('scheduled_at')
+
+    if (selectedEdition !== 'all') {
+      query = query.eq('edition_id', selectedEdition)
+    }
+
+    const { data } = await query
     setMatches((data as DashboardMatch[]) ?? [])
     setLoading(false)
-  }, [today]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [today, selectedEdition]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     loadMatches()
@@ -75,7 +104,7 @@ export default function OperatorDashboard() {
 
   return (
     <>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4">
         <div>
           <h1 className="text-2xl font-bold">Partidos de Hoy</h1>
           <p className="text-sm text-gray-500 capitalize mt-0.5">
@@ -88,6 +117,35 @@ export default function OperatorDashboard() {
           </span>
         )}
       </div>
+
+      {/* Edition filter */}
+      {editions.length > 1 && (
+        <div className="flex gap-2 flex-wrap mb-6">
+          <button
+            onClick={() => setSelectedEdition('all')}
+            className={`text-sm px-3 py-1.5 rounded-full border font-medium transition ${
+              selectedEdition === 'all'
+                ? 'bg-gray-900 text-white border-gray-900'
+                : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'
+            }`}
+          >
+            Todas
+          </button>
+          {editions.map((e) => (
+            <button
+              key={e.id}
+              onClick={() => setSelectedEdition(e.id)}
+              className={`text-sm px-3 py-1.5 rounded-full border font-medium transition ${
+                selectedEdition === e.id
+                  ? 'bg-gray-900 text-white border-gray-900'
+                  : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'
+              }`}
+            >
+              {e.name}
+            </button>
+          ))}
+        </div>
+      )}
 
       {loading ? (
         <p className="text-gray-500">Cargando partidos...</p>
@@ -111,6 +169,11 @@ export default function OperatorDashboard() {
                     <div key={m.id} className={`bg-white rounded-lg border p-4 flex items-center justify-between gap-3 ${m.status === 'live' ? 'border-red-200 shadow-sm' : ''}`}>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                          {selectedEdition === 'all' && m.edition && (
+                            <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 font-medium flex-shrink-0">
+                              {m.edition.name}
+                            </span>
+                          )}
                           {m.discipline && (
                             <span className={`text-xs px-1.5 py-0.5 rounded border font-medium flex-shrink-0 ${m.discipline.gender === 'M' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-pink-50 text-pink-700 border-pink-200'}`}>
                               {SPORT_LABELS[m.discipline.name]} {m.discipline.gender}

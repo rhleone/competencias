@@ -1,10 +1,18 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { Suspense, useState, useEffect, useCallback } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
 import type { MatchStatus, DisciplineType, GenderType } from '@/types/database'
 import { TeamLogo } from '@/components/ui/team-logo'
+
+interface Edition {
+  id: string
+  name: string
+  year: number
+  status: string
+}
 
 const SPORT_LABELS: Record<DisciplineType, string> = {
   football: 'Fútbol', basketball: 'Basketball', volleyball: 'Voleyball', futsal: 'Fútbol Sala',
@@ -47,8 +55,18 @@ const STATUS_MAP: Record<MatchStatus, string> = {
 }
 
 export default function FixturePage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-gray-50 flex items-center justify-center"><p className="text-gray-400">Cargando...</p></div>}>
+      <FixtureContent />
+    </Suspense>
+  )
+}
+
+function FixtureContent() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabase = createClient() as any
+  const searchParams = useSearchParams()
+  const editionParam = searchParams.get('edition')
 
   const [matches, setMatches] = useState<FixtureMatch[]>([])
   const [disciplines, setDisciplines] = useState<DiscFilter[]>([])
@@ -93,12 +111,19 @@ export default function FixturePage() {
     async function init() {
       try {
         let edition: { id: string; name: string } | null = null
-        const { data: active } = await supabase.from('editions').select('id, name').eq('status', 'active').maybeSingle()
-        if (active) { edition = active }
-        else {
-          const { data: latest } = await supabase.from('editions').select('id, name').order('year', { ascending: false }).limit(1).maybeSingle()
-          edition = latest
+
+        if (editionParam) {
+          const { data } = await supabase.from('editions').select('id, name').eq('id', editionParam).maybeSingle()
+          edition = data
+        } else {
+          const { data: active } = await supabase.from('editions').select('id, name').eq('status', 'active').maybeSingle()
+          if (active) { edition = active }
+          else {
+            const { data: latest } = await supabase.from('editions').select('id, name').order('year', { ascending: false }).limit(1).maybeSingle()
+            edition = latest
+          }
         }
+
         if (edition) {
           setEditionId(edition.id)
           setEditionName(edition.name)
@@ -111,7 +136,7 @@ export default function FixturePage() {
       }
     }
     init()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [editionParam]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Polling for live score updates
   useEffect(() => {
@@ -159,7 +184,7 @@ export default function FixturePage() {
             <h1 className="text-xl font-bold">Fixture Completo</h1>
             <p className="text-blue-300 text-sm mt-0.5">{editionName}</p>
           </div>
-          <Link href="/resultados" className="text-sm text-blue-200 hover:text-white transition">
+          <Link href={editionId ? `/resultados?edition=${editionId}` : '/resultados'} className="text-sm text-blue-200 hover:text-white transition">
             Resultados en vivo →
           </Link>
         </div>
