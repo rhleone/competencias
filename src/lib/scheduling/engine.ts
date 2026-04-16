@@ -242,8 +242,75 @@ function teamMatchCountOnDate(
   ).length
 }
 
+type TimeBucket = 'morning' | 'midday' | 'afternoon'
+
 /**
- * Main scheduling engine: greedy assignment of match pairs to available slots.
+ * Classify a time string (HH:MM) into a broad time bucket.
+ * morning  : 06:00 – 11:59
+ * midday   : 12:00 – 14:59
+ * afternoon: 15:00 onwards
+ */
+function getTimeBucket(time: string): TimeBucket {
+  const minutes = timeToMinutes(time)
+  if (minutes < 12 * 60) return 'morning'
+  if (minutes < 15 * 60) return 'midday'
+  return 'afternoon'
+}
+
+/**
+ * Return the number of times a team has already been assigned to a given
+ * time bucket within a discipline.
+ */
+function teamBucketCount(
+  teamId: string,
+  bucket: TimeBucket,
+  disciplineId: string,
+  bucketCounts: Map<string, Map<TimeBucket, number>>
+): number {
+  return bucketCounts.get(`${disciplineId}:${teamId}`)?.get(bucket) ?? 0
+}
+
+/**
+ * Increment the bucket counter for both teams in a pair after an assignment.
+ */
+function recordBucketAssignment(
+  pair: MatchPair,
+  bucket: TimeBucket,
+  bucketCounts: Map<string, Map<TimeBucket, number>>
+): void {
+  for (const teamId of [pair.homeTeamId, pair.awayTeamId]) {
+    const key = `${pair.disciplineId}:${teamId}`
+    const counts = bucketCounts.get(key) ?? new Map<TimeBucket, number>()
+    counts.set(bucket, (counts.get(bucket) ?? 0) + 1)
+    bucketCounts.set(key, counts)
+  }
+}
+
+/**
+ * Equity cost of assigning a slot to a pair.
+ * Defined as the maximum bucket count either team already has for that bucket
+ * in this discipline. Lower = more equitable.
+ */
+function equityCost(
+  pair: MatchPair,
+  slot: TimeSlot,
+  bucketCounts: Map<string, Map<TimeBucket, number>>
+): number {
+  const bucket = getTimeBucket(slot.startTime)
+  return Math.max(
+    teamBucketCount(pair.homeTeamId, bucket, pair.disciplineId, bucketCounts),
+    teamBucketCount(pair.awayTeamId, bucket, pair.disciplineId, bucketCounts)
+  )
+}
+
+/**
+ * Main scheduling engine: assigns match pairs to time slots.
+ *
+ * Slot selection criteria (in order):
+ *  1. Same discipline, no gender conflict, within max_matches_per_day.
+ *  2. Among valid slots, prefer the one with the lowest equity cost
+ *     (i.e. the time bucket least used by either team in this discipline).
+ *  3. Ties broken by earliest date then earliest start time.
  */
 export function scheduleMatches(
   matchPairs: MatchPair[],
@@ -255,6 +322,10 @@ export function scheduleMatches(
   const assignments: SchedulingResult['assignments'] = []
   const unscheduled: MatchPair[] = []
 
+  // Tracks how many times each team has played in each time bucket per discipline.
+  // Key: "<disciplineId>:<teamId>"
+  const bucketCounts = new Map<string, Map<TimeBucket, number>>()
+
   // Sort match pairs by match day first, then discipline
   const sortedPairs = [...matchPairs].sort((a, b) => {
     if (a.matchDay !== b.matchDay) return a.matchDay - b.matchDay
@@ -262,32 +333,59 @@ export function scheduleMatches(
   })
 
   for (const pair of sortedPairs) {
-    const disciplineConfig = config.disciplines.find(
-      (d) => d.id === pair.disciplineId
-    )
+    const disciplineConfig = config.disciplines.find((d) => d.id === pair.disciplineId)
     if (!disciplineConfig) {
       unscheduled.push(pair)
       continue
     }
 
-    // Find first valid slot for this match
     const maxPerDay = (disciplineConfig as Discipline & { max_matches_per_day?: number }).max_matches_per_day ?? 1
-    const slotIndex = availableSlots.findIndex((slot) => {
-      if (slot.disciplineId !== pair.disciplineId) return false
-      if (hasGenderConflict(slot, assignedSlots)) return false
-      if (teamMatchCountOnDate(pair, slot.date, assignments) >= maxPerDay) return false
-      return true
-    })
 
-    if (slotIndex === -1) {
+    // Collect all valid slots for this pair
+    const validIndices: number[] = []
+    for (let i = 0; i < availableSlots.length; i++) {
+      const slot = availableSlots[i]
+      if (slot.disciplineId !== pair.disciplineId) continue
+      if (hasGenderConflict(slot, assignedSlots)) continue
+      if (teamMatchCountOnDate(pair, slot.date, assignments) >= maxPerDay) continue
+      validIndices.push(i)
+    }
+
+    if (validIndices.length === 0) {
       unscheduled.push(pair)
       continue
     }
 
-    const chosenSlot = availableSlots[slotIndex]
+    // Pick the valid slot with the lowest equity cost.
+    // Ties: prefer earlier date, then earlier start time.
+    let bestIndex = validIndices[0]
+    let bestCost = equityCost(pair, availableSlots[bestIndex], bucketCounts)
+
+    for (let k = 1; k < validIndices.length; k++) {
+      const idx = validIndices[k]
+      const slot = availableSlots[idx]
+      const cost = equityCost(pair, slot, bucketCounts)
+
+      if (cost < bestCost) {
+        bestCost = cost
+        bestIndex = idx
+      } else if (cost === bestCost) {
+        const current = availableSlots[bestIndex]
+        // Earlier date wins; same date → earlier start time wins
+        if (
+          slot.date < current.date ||
+          (slot.date === current.date && slot.startTime < current.startTime)
+        ) {
+          bestIndex = idx
+        }
+      }
+    }
+
+    const chosenSlot = availableSlots[bestIndex]
     assignments.push({ matchPair: pair, slot: chosenSlot })
     assignedSlots.push(chosenSlot)
-    availableSlots.splice(slotIndex, 1)
+    availableSlots.splice(bestIndex, 1)
+    recordBucketAssignment(pair, getTimeBucket(chosenSlot.startTime), bucketCounts)
   }
 
   return { assignments, unscheduled }
