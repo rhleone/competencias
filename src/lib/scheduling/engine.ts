@@ -222,6 +222,27 @@ function hasGenderConflict(
 }
 
 /**
+ * Count how many matches either team in a pair already has scheduled on a
+ * given date within the same discipline.
+ * Used to enforce max_matches_per_day per discipline.
+ */
+function teamMatchCountOnDate(
+  pair: MatchPair,
+  date: string,
+  assignments: SchedulingResult['assignments']
+): number {
+  return assignments.filter(
+    (a) =>
+      a.slot.date === date &&
+      a.matchPair.disciplineId === pair.disciplineId &&
+      (a.matchPair.homeTeamId === pair.homeTeamId ||
+        a.matchPair.homeTeamId === pair.awayTeamId ||
+        a.matchPair.awayTeamId === pair.homeTeamId ||
+        a.matchPair.awayTeamId === pair.awayTeamId)
+  ).length
+}
+
+/**
  * Main scheduling engine: greedy assignment of match pairs to available slots.
  */
 export function scheduleMatches(
@@ -250,9 +271,11 @@ export function scheduleMatches(
     }
 
     // Find first valid slot for this match
+    const maxPerDay = (disciplineConfig as Discipline & { max_matches_per_day?: number }).max_matches_per_day ?? 1
     const slotIndex = availableSlots.findIndex((slot) => {
       if (slot.disciplineId !== pair.disciplineId) return false
       if (hasGenderConflict(slot, assignedSlots)) return false
+      if (teamMatchCountOnDate(pair, slot.date, assignments) >= maxPerDay) return false
       return true
     })
 

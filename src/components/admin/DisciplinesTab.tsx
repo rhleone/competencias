@@ -52,6 +52,7 @@ const defaultForm = {
   enable_cross_group: false,
   qualifying_per_group: 2,
   best_thirds_count: 0,
+  max_matches_per_day: 1,
 }
 
 interface Props {
@@ -106,6 +107,7 @@ export default function DisciplinesTab({ editionId }: Props) {
       enable_cross_group: d.enable_cross_group ?? false,
       qualifying_per_group: d.qualifying_per_group ?? 2,
       best_thirds_count: d.best_thirds_count ?? 0,
+      max_matches_per_day: d.max_matches_per_day ?? 1,
     })
     setDialogOpen(true)
   }
@@ -370,6 +372,18 @@ export default function DisciplinesTab({ editionId }: Props) {
                 <p className="text-xs text-gray-500">Genera partidos entre equipos del mismo grado en distintos grupos (ej: 1°A vs 1°B)</p>
               </div>
             </label>
+
+            <div className="space-y-2">
+              <Label>Partidos por equipo por día</Label>
+              <Input
+                type="number"
+                min={1}
+                max={5}
+                value={form.max_matches_per_day}
+                onChange={(e) => handleNumericChange('max_matches_per_day', e.target.value)}
+              />
+              <p className="text-xs text-gray-400">Máximo de partidos que un equipo puede jugar en el mismo día en esta disciplina</p>
+            </div>
 
             <div className="border-t pt-4">
               <p className="text-sm font-medium text-gray-700 mb-3">Clasificación a fase eliminatoria</p>

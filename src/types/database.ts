@@ -56,6 +56,7 @@ export interface Database {
           enable_cross_group: boolean
           qualifying_per_group: number
           best_thirds_count: number
+          max_matches_per_day: number
           created_at: string
         }
         Insert: Omit<Database['public']['Tables']['disciplines']['Row'], 'id' | 'created_at'>
