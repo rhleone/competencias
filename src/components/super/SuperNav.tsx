@@ -2,12 +2,13 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, CreditCard, Building2 } from 'lucide-react'
+import { LayoutDashboard, CreditCard, Building2, ShieldAlert } from 'lucide-react'
 
 const NAV = [
-  { href: '/super/dashboard', label: 'Dashboard',       icon: LayoutDashboard },
-  { href: '/super/payments',  label: 'Pagos',           icon: CreditCard },
-  { href: '/super/tenants',   label: 'Organizaciones',  icon: Building2 },
+  { href: '/super/dashboard',   label: 'Dashboard',       icon: LayoutDashboard },
+  { href: '/super/payments',    label: 'Pagos',            icon: CreditCard },
+  { href: '/super/tenants',     label: 'Organizaciones',   icon: Building2 },
+  { href: '/super/access-log',  label: 'Log de accesos',   icon: ShieldAlert },
 ]
 
 export default function SuperNav() {
