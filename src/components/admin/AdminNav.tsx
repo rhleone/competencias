@@ -11,6 +11,7 @@ export default function AdminNav() {
 
   const navItems = [
     { href: base, label: 'Panel', exact: true },
+    { href: `${base}/users`, label: 'Usuarios', exact: false },
   ]
 
   return (
