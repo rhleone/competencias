@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import Link from 'next/link'
+import SuperNav from '@/components/super/SuperNav'
 import { APP_NAME } from '@/lib/app-config'
 
 export default async function SuperLayout({ children }: { children: React.ReactNode }) {
@@ -27,14 +27,7 @@ export default async function SuperLayout({ children }: { children: React.ReactN
           <p className="text-xs font-bold text-purple-700 uppercase tracking-wider">Superadmin</p>
           <p className="text-xs text-gray-400 mt-0.5 truncate">{APP_NAME}</p>
         </div>
-        <nav className="flex-1 p-3 space-y-1">
-          <Link href="/super/payments" className="flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition">
-            Pagos
-          </Link>
-          <Link href="/super/tenants" className="flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition">
-            Organizaciones
-          </Link>
-        </nav>
+        <SuperNav />
         <div className="px-4 py-3 border-t text-xs text-gray-400 truncate">
           {profile.full_name ?? user.email}
         </div>

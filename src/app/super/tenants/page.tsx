@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { toast } from 'sonner'
-import { Loader2, RefreshCw, Plus, ExternalLink, Users } from 'lucide-react'
+import { Loader2, RefreshCw, Plus, ExternalLink, Users, Ban, CheckCircle2 } from 'lucide-react'
 import { PLAN_CONFIG, type PlanKey } from '@/lib/plan-config'
 
 type Tenant = {
@@ -47,6 +47,20 @@ export default function SuperTenantsPage() {
   const [adminPassword, setAdminPassword] = useState('')
   const [adminMode, setAdminMode] = useState<'invite' | 'password'>('invite')
   const [creating, setCreating] = useState(false)
+
+  async function handleToggleStatus(t: Tenant) {
+    const newStatus = t.status === 'active' ? 'suspended' : 'active'
+    const label = newStatus === 'suspended' ? 'suspender' : 'reactivar'
+    if (!confirm(`¿Confirmas ${label} a ${t.name}?`)) return
+    const res = await fetch(`/api/super/tenants/${t.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: newStatus }),
+    })
+    const json = await res.json()
+    if (!res.ok) toast.error(json.error ?? 'Error')
+    else { toast.success(`${t.name} ${newStatus === 'active' ? 'reactivado' : 'suspendido'}`); load() }
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -213,15 +227,27 @@ export default function SuperTenantsPage() {
                       {new Date(t.created_at).toLocaleDateString('es-BO', { day: 'numeric', month: 'short', year: 'numeric' })}
                     </td>
                     <td className="px-4 py-3">
-                      <a
-                        href={`/t/${t.slug}/admin`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-500 hover:text-blue-700"
-                        title="Abrir panel del tenant"
-                      >
-                        <ExternalLink className="w-4 h-4" />
-                      </a>
+                      <div className="flex items-center gap-2 justify-end">
+                        <a
+                          href={`/t/${t.slug}/admin`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-500 hover:text-blue-700"
+                          title="Abrir panel del tenant"
+                        >
+                          <ExternalLink className="w-4 h-4" />
+                        </a>
+                        <button
+                          onClick={() => handleToggleStatus(t)}
+                          title={t.status === 'active' ? 'Suspender' : 'Reactivar'}
+                          className={`transition ${t.status === 'active' ? 'text-gray-300 hover:text-red-500' : 'text-green-500 hover:text-green-700'}`}
+                        >
+                          {t.status === 'active'
+                            ? <Ban className="w-4 h-4" />
+                            : <CheckCircle2 className="w-4 h-4" />
+                          }
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 )
