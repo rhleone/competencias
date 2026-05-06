@@ -43,27 +43,39 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   if (!self && !isSuperAdmin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  // Fetch tenant_users + join profiles (service role bypasses RLS)
-  const { data: members } = await adb
+  // Fetch tenant_users (two-step to avoid FK ambiguity with auth.users vs profiles)
+  const { data: tuRows, error: tuError } = await adb
     .from('tenant_users')
-    .select('id, user_id, role, created_at, profile:user_id(full_name, email)')
+    .select('id, user_id, role, created_at')
     .eq('tenant_id', tenant.id)
     .order('created_at')
+
+  if (tuError) return NextResponse.json({ error: tuError.message }, { status: 500 })
+
+  const userIds: string[] = (tuRows ?? []).map((r: { user_id: string }) => r.user_id)
+
+  const { data: profileRows } = userIds.length
+    ? await adb.from('profiles').select('id, full_name, email').in('id', userIds)
+    : { data: [] }
+
+  const profileMap = new Map(
+    (profileRows ?? []).map((p: { id: string; full_name: string | null; email: string }) => [p.id, p])
+  )
 
   const limit = PLAN_MEMBER_LIMITS[tenant.plan] ?? 2
 
   return NextResponse.json({
-    members: (members ?? []).map((m: {
-      id: string; user_id: string; role: string; created_at: string
-      profile: { full_name: string | null; email: string } | null
-    }) => ({
-      id: m.id,
-      user_id: m.user_id,
-      role: m.role,
-      joined_at: m.created_at,
-      full_name: m.profile?.full_name ?? null,
-      email: m.profile?.email ?? '—',
-    })),
+    members: (tuRows ?? []).map((m: { id: string; user_id: string; role: string; created_at: string }) => {
+      const p = profileMap.get(m.user_id) as { full_name: string | null; email: string } | undefined
+      return {
+        id: m.id,
+        user_id: m.user_id,
+        role: m.role,
+        joined_at: m.created_at,
+        full_name: p?.full_name ?? null,
+        email: p?.email ?? '—',
+      }
+    }),
     plan: tenant.plan,
     member_limit: limit,
     current_user_id: authData.user.id,
