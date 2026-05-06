@@ -230,11 +230,19 @@ export default function SuperTenantsPage() {
                       <div className="flex items-center gap-2 justify-end">
                         <a
                           href={`/t/${t.slug}/admin`}
-                          className="inline-flex items-center gap-1.5 text-xs font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 px-2.5 py-1 rounded-md transition"
-                          title="Acceder como superadmin al panel de este tenant"
+                          className="inline-flex items-center gap-1 text-xs font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 px-2 py-1 rounded-md transition"
+                          title="Acceder como admin"
                         >
                           <ExternalLink className="w-3 h-3" />
-                          Acceder
+                          Admin
+                        </a>
+                        <a
+                          href={`/t/${t.slug}/operator`}
+                          className="inline-flex items-center gap-1 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2 py-1 rounded-md transition"
+                          title="Acceder como operador"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          Operador
                         </a>
                         <button
                           onClick={() => handleToggleStatus(t)}

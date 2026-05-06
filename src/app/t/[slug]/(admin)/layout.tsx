@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import AdminNav from '@/components/admin/AdminNav'
 import LogoutButton from '@/components/admin/LogoutButton'
 import SuperAdminBanner from '@/components/admin/SuperAdminBanner'
+import PlanExpiredBanner from '@/components/admin/PlanExpiredBanner'
 import { APP_NAME } from '@/lib/app-config'
 
 export default async function TenantAdminLayout({
@@ -35,7 +36,7 @@ export default async function TenantAdminLayout({
   // Resolve tenant
   const { data: tenant } = await adb
     .from('tenants')
-    .select('id, name')
+    .select('id, name, plan, plan_expires_at')
     .eq('slug', slug)
     .single()
 
@@ -68,6 +69,7 @@ export default async function TenantAdminLayout({
       await adb.from('superadmin_access_log').insert({
         superadmin_id: user.id,
         tenant_id: tenant.id,
+        role: 'admin',
       })
     }
   }
@@ -75,6 +77,9 @@ export default async function TenantAdminLayout({
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
       {isSuperAdmin && <SuperAdminBanner tenantName={tenant.name} />}
+      {!isSuperAdmin && tenant.plan !== 'free' && (
+        <PlanExpiredBanner expiresAt={tenant.plan_expires_at ?? null} />
+      )}
 
       <div className="flex flex-1 min-h-0">
         <aside className="w-60 bg-white border-r flex flex-col flex-shrink-0">

@@ -8,6 +8,7 @@ import { toast } from 'sonner'
 type LogEntry = {
   id: string
   accessed_at: string
+  role: 'admin' | 'operator'
   superadmin: { id: string; full_name: string | null; email: string }
   tenant: { id: string; slug: string; name: string }
 }
@@ -93,7 +94,16 @@ export default function AccessLogPage() {
                             <p className="text-xs text-gray-400">{entry.superadmin.email}</p>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-gray-500 text-xs">→</td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${
+                            entry.role === 'admin'
+                              ? 'bg-purple-100 text-purple-700'
+                              : 'bg-blue-100 text-blue-700'
+                          }`}>
+                            {entry.role === 'admin' ? 'Admin' : 'Operador'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-gray-400 text-xs">→</td>
                         <td className="px-4 py-3">
                           <p className="font-medium text-gray-900 text-xs">{entry.tenant.name}</p>
                           <p className="text-xs text-gray-400">/t/{entry.tenant.slug}</p>

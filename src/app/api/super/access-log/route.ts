@@ -17,7 +17,7 @@ export async function GET(_req: NextRequest) {
 
   const { data: rows, error } = await adb
     .from('superadmin_access_log')
-    .select('id, superadmin_id, tenant_id, accessed_at')
+    .select('id, superadmin_id, tenant_id, role, accessed_at')
     .order('accessed_at', { ascending: false })
     .limit(200)
 
@@ -40,9 +40,10 @@ export async function GET(_req: NextRequest) {
   const tenantMap = new Map((tenants ?? []).map((t: { id: string; slug: string; name: string }) => [t.id, t]))
 
   return NextResponse.json({
-    entries: (rows ?? []).map((r: { id: string; superadmin_id: string; tenant_id: string; accessed_at: string }) => ({
+    entries: (rows ?? []).map((r: { id: string; superadmin_id: string; tenant_id: string; role: string; accessed_at: string }) => ({
       id: r.id,
       accessed_at: r.accessed_at,
+      role: r.role,
       superadmin: profileMap.get(r.superadmin_id) ?? { id: r.superadmin_id, full_name: null, email: '—' },
       tenant: tenantMap.get(r.tenant_id) ?? { id: r.tenant_id, slug: '—', name: '—' },
     })),

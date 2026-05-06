@@ -87,6 +87,12 @@ function LoginForm() {
       <Link href="/auth/forgot-password" className="block text-center text-sm text-blue-600 hover:underline">
         ¿Olvidaste tu contraseña?
       </Link>
+      <p className="text-center text-xs text-gray-400 pt-1">
+        ¿No tenés cuenta?{' '}
+        <Link href="/register" className="text-blue-600 hover:underline">
+          Registrá tu organización
+        </Link>
+      </p>
     </form>
   )
 }

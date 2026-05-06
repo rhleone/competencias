@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS superadmin_access_log (
   id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   superadmin_id  uuid NOT NULL REFERENCES auth.users(id),
   tenant_id      uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  role           text NOT NULL DEFAULT 'admin' CHECK (role IN ('admin', 'operator')),
   accessed_at    timestamptz NOT NULL DEFAULT now()
 );
 
