@@ -15,7 +15,9 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { toast } from 'sonner'
+import { Shuffle } from 'lucide-react'
 import type { Database, DisciplineType, GenderType } from '@/types/database'
+import DrawGroupsDialog from './DrawGroupsDialog'
 
 type Discipline = Database['public']['Tables']['disciplines']['Row']
 type Team = Database['public']['Tables']['teams']['Row']
@@ -78,6 +80,9 @@ export default function GroupsTab({ editionId }: Props) {
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleteGroup, setDeleteGroup] = useState<GroupWithTeams | null>(null)
 
+  // Draw dialog
+  const [drawOpen, setDrawOpen] = useState(false)
+
   const load = useCallback(async () => {
     setLoading(true)
 
@@ -85,7 +90,7 @@ export default function GroupsTab({ editionId }: Props) {
       supabase.from('disciplines').select('*').eq('edition_id', editionId).order('created_at'),
       supabase.from('phases').select('*').eq('edition_id', editionId).order('order_index'),
       supabase.from('groups').select('*').eq('edition_id', editionId).order('created_at'),
-      db.from('teams').select('id, name, color').eq('edition_id', editionId),
+      db.from('teams').select('id, name, color, grade').eq('edition_id', editionId),
       supabase.from('group_teams').select('*'),
       db.from('team_disciplines').select('team_id, discipline_id'),
     ])
@@ -259,15 +264,26 @@ export default function GroupsTab({ editionId }: Props) {
     <div>
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-lg font-semibold">Grupos</h2>
-        <Button
-          onClick={() => {
-            setCreateForm({ name: '', discipline_id: disciplines[0]?.id ?? '', phase_id: '' })
-            setCreateOpen(true)
-          }}
-          disabled={disciplines.length === 0}
-        >
-          + Crear Grupo
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setDrawOpen(true)}
+            disabled={disciplines.length === 0}
+            className="gap-2"
+          >
+            <Shuffle className="w-4 h-4" />
+            Sorteo Aleatorio
+          </Button>
+          <Button
+            onClick={() => {
+              setCreateForm({ name: '', discipline_id: disciplines[0]?.id ?? '', phase_id: '' })
+              setCreateOpen(true)
+            }}
+            disabled={disciplines.length === 0}
+          >
+            + Crear Grupo
+          </Button>
+        </div>
       </div>
 
       {disciplines.length === 0 && (
@@ -462,6 +478,20 @@ export default function GroupsTab({ editionId }: Props) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Draw Groups Dialog */}
+      <DrawGroupsDialog
+        open={drawOpen}
+        onClose={() => setDrawOpen(false)}
+        onSaved={() => { setDrawOpen(false); load() }}
+        editionId={editionId}
+        disciplines={disciplines}
+        phases={phases}
+        allTeams={allTeams}
+        teamDisciplines={teamDisciplines}
+        existingGroups={groups}
+        db={db}
+      />
     </div>
   )
 }
