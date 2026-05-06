@@ -23,7 +23,7 @@ type Member = {
 type UsersData = {
   members: Member[]
   plan: string
-  member_limit: number
+  member_limit: number | null
   current_user_id: string
   current_role: string | null
 }
@@ -144,7 +144,7 @@ export default function UsersTab() {
   if (!data) return <p className="text-sm text-red-500 py-4">Error al cargar usuarios.</p>
 
   const { members, plan, member_limit, current_user_id } = data
-  const atLimit = member_limit !== Infinity && members.length >= member_limit
+  const atLimit = member_limit !== null && members.length >= member_limit
   const canManage = data.current_role === 'tenant_admin' || data.current_role === 'superadmin'
 
   return (
@@ -154,7 +154,7 @@ export default function UsersTab() {
         <div>
           <h2 className="text-lg font-semibold">Usuarios</h2>
           <p className="text-sm text-gray-500 mt-0.5">
-            {members.length} de {member_limit === Infinity ? '∞' : member_limit} miembros ·{' '}
+            {members.length} de {member_limit === null ? '∞' : member_limit} miembros ·{' '}
             <span className="font-medium">{PLAN_LABELS[plan] ?? plan}</span>
           </p>
         </div>

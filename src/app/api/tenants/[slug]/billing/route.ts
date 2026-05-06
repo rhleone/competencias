@@ -52,7 +52,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     plan: tenant.plan,
     plan_expires_at: tenant.plan_expires_at,
     member_count: memberCount ?? 0,
-    member_limit: MEMBER_LIMITS[tenant.plan] ?? 2,
+    member_limit: (MEMBER_LIMITS[tenant.plan] ?? 2) === Infinity ? null : (MEMBER_LIMITS[tenant.plan] ?? 2),
     payments: payments ?? [],
     instructions: {
       tigo_money_phone: process.env.TIGO_MONEY_PHONE ?? '',

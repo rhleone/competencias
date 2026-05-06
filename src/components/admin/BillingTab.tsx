@@ -28,7 +28,7 @@ type BillingData = {
   plan: string
   plan_expires_at: string | null
   member_count: number
-  member_limit: number
+  member_limit: number | null
   payments: Payment[]
   instructions: {
     tigo_money_phone: string
@@ -191,7 +191,7 @@ export default function BillingTab() {
             </div>
             <p className="text-sm text-gray-500">
               {data.member_count} de{' '}
-              {data.member_limit === Infinity ? '∞' : data.member_limit} usuarios
+              {data.member_limit === null ? '∞' : data.member_limit} usuarios
             </p>
           </div>
           {data.plan !== 'free' && (

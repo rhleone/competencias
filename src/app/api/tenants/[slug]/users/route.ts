@@ -72,7 +72,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       }
     }),
     plan: tenant.plan,
-    member_limit: limit,
+    member_limit: limit === Infinity ? null : limit,
     current_user_id: authData.user.id,
     current_role: self?.role ?? (isSuperAdmin ? 'superadmin' : null),
   })
@@ -126,7 +126,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     .select('id', { count: 'exact', head: true })
     .eq('tenant_id', tenant.id)
 
-  if ((count ?? 0) >= limit) {
+  if (limit !== Infinity && (count ?? 0) >= limit) {
     return NextResponse.json({
       error: `Límite del plan alcanzado (${limit} miembros). Actualizá tu plan para agregar más.`,
     }, { status: 403 })
