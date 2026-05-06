@@ -2,13 +2,16 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-
-const navItems = [
-  { href: '/admin', label: 'Panel', exact: true },
-]
+import { useTenant } from '@/lib/tenant-context'
 
 export default function AdminNav() {
+  const { slug } = useTenant()
   const pathname = usePathname()
+  const base = `/t/${slug}/admin`
+
+  const navItems = [
+    { href: base, label: 'Panel', exact: true },
+  ]
 
   return (
     <nav className="flex-1 p-4 space-y-1">
