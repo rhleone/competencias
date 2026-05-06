@@ -1,22 +1,23 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import Link from 'next/link'
 import { APP_NAME } from '@/lib/app-config'
 
 export default async function SuperLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/auth/login')
+  if (!user) redirect('/auth/login?next=/super')
 
+  // Use admin client to bypass RLS — anon client can fail silently on profiles
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = supabase as any
-  const { data: profile } = await db
+  const { data: profile } = await (createAdminClient() as any)
     .from('profiles')
     .select('is_superadmin, full_name')
     .eq('id', user.id)
     .single()
 
-  if (!profile?.is_superadmin) redirect('/auth/login')
+  if (!profile?.is_superadmin) redirect('/auth/login?next=/super')
 
   return (
     <div className="min-h-screen bg-gray-50 flex">

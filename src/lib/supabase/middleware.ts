@@ -32,6 +32,7 @@ export async function updateSession(request: NextRequest) {
   if (pathname.startsWith('/super') && !user) {
     const url = request.nextUrl.clone()
     url.pathname = '/auth/login'
+    url.searchParams.set('next', '/super')
     return NextResponse.redirect(url)
   }
 
