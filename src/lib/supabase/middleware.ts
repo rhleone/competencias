@@ -28,6 +28,13 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
+  // Superadmin routes
+  if (pathname.startsWith('/super') && !user) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/auth/login'
+    return NextResponse.redirect(url)
+  }
+
   // Legacy route protection (kept for backward compatibility during migration)
   if ((pathname.startsWith('/admin') || pathname.startsWith('/operator')) && !user) {
     const url = request.nextUrl.clone()

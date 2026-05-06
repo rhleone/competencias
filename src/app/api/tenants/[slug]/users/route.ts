@@ -1,12 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-
-const PLAN_MEMBER_LIMITS: Record<string, number> = {
-  free: 2,
-  basic: 10,
-  pro: Infinity,
-}
+import { MEMBER_LIMITS as PLAN_MEMBER_LIMITS } from '@/lib/plan-config'
 
 type Params = { params: Promise<{ slug: string }> }
 
