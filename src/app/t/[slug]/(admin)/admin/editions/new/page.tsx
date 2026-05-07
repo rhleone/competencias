@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useTenant } from '@/lib/tenant-context'
 
 export default function NewEditionPage() {
-  const { slug } = useTenant()
+  const { slug, id: tenantId } = useTenant()
   const router = useRouter()
   const supabase = createClient()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -68,6 +68,7 @@ export default function NewEditionPage() {
       start_date: form.start_date,
       end_date: form.end_date,
       status: 'draft',
+      tenant_id: tenantId,
     }).select('id').single()
 
     if (insertError) {

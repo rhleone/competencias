@@ -29,7 +29,7 @@ function StatusBadge({ status }: { status: MatchStatus }) {
 }
 
 export default function OperatorDashboard() {
-  const { slug } = useTenant()
+  const { slug, id: tenantId } = useTenant()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabase = createClient() as any
   const [editions, setEditions] = useState<Edition[]>([])
@@ -40,11 +40,11 @@ export default function OperatorDashboard() {
 
   useEffect(() => {
     async function loadEditions() {
-      const { data } = await supabase.from('editions').select('id, name, status').in('status', ['active', 'draft']).order('year', { ascending: false })
+      const { data } = await supabase.from('editions').select('id, name, status').eq('tenant_id', tenantId).in('status', ['active', 'draft']).order('year', { ascending: false })
       setEditions((data as Edition[]) ?? [])
     }
     loadEditions()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tenantId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadMatches = useCallback(async () => {
     setLoading(true)

@@ -19,9 +19,15 @@ export default async function AdminDashboard({ params }: { params: Promise<{ slu
   const { data: authData } = await supabase.auth.getUser()
   if (!authData?.user) redirect('/auth/login')
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = supabase as any
+  const { data: tenantRow } = await db.from('tenants').select('id').eq('slug', slug).single()
+  const tenantId: string | undefined = tenantRow?.id
+
   const { data: editionsData } = await supabase
     .from('editions')
     .select('*')
+    .eq('tenant_id', tenantId ?? '')
     .order('year', { ascending: false })
   const editions = (editionsData ?? []) as Edition[]
 

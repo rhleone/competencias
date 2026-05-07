@@ -10,7 +10,7 @@ export type TenantInfo = {
   status: string
 }
 
-const TenantContext = createContext<TenantInfo | null>(null)
+export const TenantContext = createContext<TenantInfo | null>(null)
 
 export function TenantProvider({
   tenant,

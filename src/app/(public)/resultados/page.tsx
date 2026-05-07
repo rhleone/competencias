@@ -1,12 +1,13 @@
 'use client'
 
-import { Suspense, useState, useEffect, useCallback } from 'react'
+import { Suspense, useState, useEffect, useCallback, useContext } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
 import { APP_NAME } from '@/lib/app-config'
 import type { MatchStatus, DisciplineType, GenderType } from '@/types/database'
 import { TeamLogo } from '@/components/ui/team-logo'
+import { TenantContext } from '@/lib/tenant-context'
 
 const SPORT_LABELS: Record<DisciplineType, string> = {
   football: 'Fútbol', basketball: 'Basketball', volleyball: 'Voleyball', futsal: 'Fútbol Sala',
@@ -89,6 +90,7 @@ export default function ResultadosPage() {
 function ResultadosContent() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabase = createClient() as any
+  const tenant = useContext(TenantContext)
   const searchParams = useSearchParams()
   const editionParam = searchParams.get('edition')
   const [tab, setTab] = useState<Tab>('hoy')
@@ -155,22 +157,17 @@ function ResultadosContent() {
             .maybeSingle()
           edition = data
         } else {
-          // Fallback: active edition or latest
-          const { data: active } = await supabase
-            .from('editions')
-            .select('id, name, status')
-            .eq('status', 'active')
-            .maybeSingle()
+          // Fallback: active edition or latest — scoped to tenant if available
+          let activeQ = supabase.from('editions').select('id, name, status').eq('status', 'active')
+          if (tenant?.id) activeQ = activeQ.eq('tenant_id', tenant.id)
+          const { data: active } = await activeQ.maybeSingle()
 
           if (active) {
             edition = active
           } else {
-            const { data: latest } = await supabase
-              .from('editions')
-              .select('id, name, status')
-              .order('year', { ascending: false })
-              .limit(1)
-              .maybeSingle()
+            let latestQ = supabase.from('editions').select('id, name, status').order('year', { ascending: false }).limit(1)
+            if (tenant?.id) latestQ = latestQ.eq('tenant_id', tenant.id)
+            const { data: latest } = await latestQ.maybeSingle()
             edition = latest
           }
         }
