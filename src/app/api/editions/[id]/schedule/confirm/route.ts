@@ -32,7 +32,7 @@ export async function POST(
   try {
     const { id } = await params
     const body = await request.json()
-    const { assignments } = body as { assignments: AssignmentItem[] }
+    const { assignments, disciplineIds } = body as { assignments: AssignmentItem[]; disciplineIds?: string[] }
 
     if (!assignments || !Array.isArray(assignments)) {
       return NextResponse.json({ error: 'Invalid assignments data' }, { status: 400 })
@@ -48,22 +48,17 @@ export async function POST(
       return NextResponse.json({ error: 'La generación automática de calendario requiere plan Básico o superior.' }, { status: 403 })
     }
 
-    // Delete existing scheduled matches and venue_slots for this edition
-    const { error: deleteMatchesError } = await db
-      .from('matches')
-      .delete()
-      .eq('edition_id', id)
-      .eq('status', 'scheduled')
+    // Delete existing scheduled matches — scoped to selected disciplines if provided
+    const matchDeleteQ = db.from('matches').delete().eq('edition_id', id).eq('status', 'scheduled')
+    const { error: deleteMatchesError } = await (disciplineIds?.length ? matchDeleteQ.in('discipline_id', disciplineIds) : matchDeleteQ)
 
     if (deleteMatchesError) {
       console.error('Error deleting existing matches:', deleteMatchesError)
       return NextResponse.json({ error: 'Failed to clear existing schedule' }, { status: 500 })
     }
 
-    const { error: deleteSlotsError } = await db
-      .from('venue_slots')
-      .delete()
-      .eq('edition_id', id)
+    const slotDeleteQ = db.from('venue_slots').delete().eq('edition_id', id)
+    const { error: deleteSlotsError } = await (disciplineIds?.length ? slotDeleteQ.in('discipline_id', disciplineIds) : slotDeleteQ)
 
     if (deleteSlotsError) {
       console.error('Error deleting existing venue slots:', deleteSlotsError)

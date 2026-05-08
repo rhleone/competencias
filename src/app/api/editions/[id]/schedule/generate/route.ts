@@ -28,7 +28,7 @@ export async function POST(
   try {
     const { id } = await params
     const body = await request.json()
-    const { startDate, endDate, allowedDays } = body as { startDate?: string; endDate?: string; allowedDays?: number[] }
+    const { startDate, endDate, allowedDays, disciplineIds } = body as { startDate?: string; endDate?: string; allowedDays?: number[]; disciplineIds?: string[] }
 
 
     const supabase = await createClient()
@@ -73,7 +73,11 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to load disciplines' }, { status: 500 })
     }
 
-    const disciplines: Discipline[] = disciplinesData ?? []
+    // Filter to selected disciplines if provided
+    const allDisciplines: Discipline[] = disciplinesData ?? []
+    const disciplines: Discipline[] = disciplineIds?.length
+      ? allDisciplines.filter((d) => disciplineIds.includes(d.id))
+      : allDisciplines
 
     // 3. Load all groups with their assigned teams
     const { data: groupsData, error: groupsError } = await db
@@ -98,7 +102,11 @@ export async function POST(
     disciplines.forEach((d) => disciplineMap.set(d.id, d))
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const rawGroups: any[] = groupsData ?? []
+    const allGroups: any[] = groupsData ?? []
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rawGroups: any[] = disciplineIds?.length
+      ? allGroups.filter((g: { discipline_id: string }) => disciplineIds.includes(g.discipline_id))
+      : allGroups
     rawGroups.forEach((group) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ;(group.group_teams ?? []).forEach((gt: any) => {

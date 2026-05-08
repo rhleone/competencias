@@ -96,6 +96,8 @@ export default function ScheduleTab({ editionId, startDate, endDate }: { edition
   const [disciplines, setDisciplines] = useState<Discipline[]>([])
   const [discLoading, setDiscLoading] = useState(true)
   const [groupTeamCounts, setGroupTeamCounts] = useState<Map<string, number>>(new Map())
+  const [selectedDiscIds, setSelectedDiscIds] = useState<Set<string>>(new Set())
+  const [pendingDiscIds, setPendingDiscIds] = useState<string[]>([])
 
   // Blocked dates
   const [blockedDates, setBlockedDates] = useState<BlockedDate[]>([])
@@ -125,13 +127,16 @@ export default function ScheduleTab({ editionId, startDate, endDate }: { edition
       db.from('groups').select('id, discipline_id, group_teams(team_id)').eq('edition_id', editionId),
       db.from('blocked_dates').select('id, date, reason').eq('edition_id', editionId).order('date'),
     ])
-    setDisciplines((discData as Discipline[]) ?? [])
+    const discs = (discData as Discipline[]) ?? []
+    setDisciplines(discs)
+    const c = new Map<string, number>()
     if (gd) {
-      const c = new Map<string, number>()
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ;(gd as any[]).forEach((g: any) => c.set(g.discipline_id, (c.get(g.discipline_id) ?? 0) + (g.group_teams ?? []).length))
       setGroupTeamCounts(c)
     }
+    // Pre-select disciplines that are ready (≥2 teams in groups)
+    setSelectedDiscIds(new Set(discs.filter((d) => (c.get(d.id) ?? 0) >= 2).map((d) => d.id)))
     setBlockedDates((bd as BlockedDate[]) ?? [])
     setDiscLoading(false)
   }, [editionId]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -179,11 +184,14 @@ export default function ScheduleTab({ editionId, startDate, endDate }: { edition
       return
     }
     if (!allowedDays.length) { toast.error('Seleccioná al menos un día.'); return }
+    if (selectedDiscIds.size === 0) { toast.error('Seleccioná al menos una disciplina.'); return }
+    const discIds = [...selectedDiscIds]
+    setPendingDiscIds(discIds)
     setGenerating(true)
     try {
       const r = await fetch(`/api/editions/${editionId}/schedule/generate`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-        body: JSON.stringify({ startDate: localStart, endDate: localEnd, allowedDays }),
+        body: JSON.stringify({ startDate: localStart, endDate: localEnd, allowedDays, disciplineIds: discIds }),
       })
       if (!r.ok) { toast.error((await r.json()).error ?? 'Error'); return }
       const data: GenerateResult = await r.json()
@@ -198,7 +206,7 @@ export default function ScheduleTab({ editionId, startDate, endDate }: { edition
     try {
       const r = await fetch(`/api/editions/${editionId}/schedule/confirm`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-        body: JSON.stringify({ assignments: result.assignments }),
+        body: JSON.stringify({ assignments: result.assignments, disciplineIds: pendingDiscIds }),
       })
       if (!r.ok) { toast.error((await r.json()).error ?? 'Error'); return }
       const data = await r.json()
@@ -245,7 +253,6 @@ export default function ScheduleTab({ editionId, startDate, endDate }: { edition
 
   // ============= CONFIG =============
   if (state === 'config') {
-    const noTeams = disciplines.filter((d) => (groupTeamCounts.get(d.id) ?? 0) < 2)
     return (
       <div className="space-y-6 max-w-2xl">
         <h2 className="text-lg font-semibold">Generar Calendario de Partidos</h2>
@@ -291,25 +298,78 @@ export default function ScheduleTab({ editionId, startDate, endDate }: { edition
           )}
         </div>
 
-        {discLoading ? <p className="text-sm text-gray-500">Cargando...</p> : disciplines.length > 0 && (
-          <div className="rounded-md border p-4 space-y-2">
-            <p className="text-sm font-medium text-gray-700 mb-3">Parámetros por disciplina</p>
-            {disciplines.map((d) => (
-              <div key={d.id} className="flex items-center gap-3 text-sm">
-                <span className={`px-2 py-0.5 rounded text-xs font-medium border ${gCls(d.gender)}`}>{SPORT_LABELS[d.name]} {d.gender}</span>
-                <span className="text-gray-500">{d.fields_available} cancha{d.fields_available !== 1 ? 's' : ''} · {d.match_duration_minutes} min · intervalo {d.interval_minutes} min · {d.daily_start_time}–{d.daily_end_time}</span>
+        {/* Discipline selector */}
+        {discLoading ? (
+          <p className="text-sm text-gray-500">Cargando disciplinas...</p>
+        ) : disciplines.length > 0 ? (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label>Disciplinas a programar</Label>
+              <div className="flex gap-3 text-xs">
+                <button
+                  onClick={() => setSelectedDiscIds(new Set(disciplines.filter((d) => (groupTeamCounts.get(d.id) ?? 0) >= 2).map((d) => d.id)))}
+                  className="text-blue-600 hover:underline"
+                >
+                  Solo listas
+                </button>
+                <button onClick={() => setSelectedDiscIds(new Set(disciplines.map((d) => d.id)))} className="text-blue-600 hover:underline">Todas</button>
+                <button onClick={() => setSelectedDiscIds(new Set())} className="text-gray-400 hover:underline">Ninguna</button>
               </div>
-            ))}
+            </div>
+            <div className="border rounded-lg divide-y overflow-hidden">
+              {disciplines.map((d) => {
+                const teams = groupTeamCounts.get(d.id) ?? 0
+                const ready = teams >= 2
+                const checked = selectedDiscIds.has(d.id)
+                return (
+                  <label key={d.id} className={`flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-gray-50 transition ${!ready ? 'opacity-70' : ''}`}>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => setSelectedDiscIds((prev) => {
+                        const next = new Set(prev)
+                        if (checked) next.delete(d.id); else next.add(d.id)
+                        return next
+                      })}
+                      className="rounded border-gray-300 w-4 h-4 shrink-0"
+                    />
+                    <span className={`text-xs px-2 py-0.5 rounded border font-medium shrink-0 ${gCls(d.gender)}`}>
+                      {SPORT_LABELS[d.name]} {d.gender}
+                    </span>
+                    <span className="text-xs text-gray-500 flex-1">
+                      {d.fields_available} cancha{d.fields_available !== 1 ? 's' : ''} · {d.match_duration_minutes} min
+                    </span>
+                    {ready ? (
+                      <span className="text-xs text-green-600 font-medium shrink-0">{teams} equipos ✓</span>
+                    ) : (
+                      <span className="text-xs text-amber-600 font-medium shrink-0">
+                        {teams === 0 ? 'Sin grupos/equipos' : `${teams} equipo${teams !== 1 ? 's' : ''} (mín. 2)`}
+                      </span>
+                    )}
+                  </label>
+                )
+              })}
+            </div>
+            {selectedDiscIds.size === 0 && (
+              <p className="text-xs text-red-600">Seleccioná al menos una disciplina.</p>
+            )}
+            {selectedDiscIds.size > 0 && (
+              <p className="text-xs text-gray-400">
+                Solo se reemplazarán los partidos de las disciplinas seleccionadas. Las demás no se modifican.
+              </p>
+            )}
           </div>
+        ) : (
+          <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+            No hay disciplinas creadas en esta edición.
+          </p>
         )}
-        {noTeams.length > 0 && (
-          <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-            <p className="font-medium mb-1">Disciplinas con menos de 2 equipos en grupos:</p>
-            <ul className="list-disc list-inside">{noTeams.map((d) => <li key={d.id}>{SPORT_LABELS[d.name]} {GENDER_LABELS[d.gender]}</li>)}</ul>
-          </div>
-        )}
+
         <div className="flex items-center gap-3 flex-wrap">
-          <Button onClick={generate} disabled={generating || !disciplines.length || !allowedDays.length}>
+          <Button
+            onClick={generate}
+            disabled={generating || selectedDiscIds.size === 0 || !allowedDays.length}
+          >
             {generating ? 'Generando...' : 'Generar Calendario'}
           </Button>
           <Button variant="outline" onClick={() => setState('confirmed')}>Ver calendario actual →</Button>
