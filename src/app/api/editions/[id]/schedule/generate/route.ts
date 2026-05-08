@@ -38,12 +38,16 @@ export async function POST(
     // 1. Get edition
     const { data: edition, error: editionError } = await db
       .from('editions')
-      .select('*')
+      .select('*, tenant:tenant_id(plan)')
       .eq('id', id)
       .single()
 
     if (editionError || !edition) {
       return NextResponse.json({ error: 'Edition not found' }, { status: 404 })
+    }
+
+    if (edition.tenant?.plan === 'free') {
+      return NextResponse.json({ error: 'La generación automática de calendario requiere plan Básico o superior.' }, { status: 403 })
     }
 
     const dateRange = {

@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/dialog'
 import { toast } from 'sonner'
 import type { Database, DisciplineType, GenderType, MatchStatus } from '@/types/database'
+import { useTenant } from '@/lib/tenant-context'
 
 type Discipline = Database['public']['Tables']['disciplines']['Row']
 
@@ -87,6 +88,7 @@ function addMins(time: string, mins: number) {
 export default function ScheduleTab({ editionId, startDate, endDate }: { editionId: string; startDate: string; endDate: string }) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = createClient() as any
+  const { plan } = useTenant()
   const [state, setState] = useState<TabState>('config')
   const [localStart, setLocalStart] = useState(startDate)
   const [localEnd, setLocalEnd] = useState(endDate)
@@ -172,6 +174,10 @@ export default function ScheduleTab({ editionId, startDate, endDate }: { edition
   }
 
   async function generate() {
+    if (plan === 'free') {
+      toast.error('La generación automática de calendario requiere plan Básico o superior.')
+      return
+    }
     if (!allowedDays.length) { toast.error('Seleccioná al menos un día.'); return }
     setGenerating(true)
     try {

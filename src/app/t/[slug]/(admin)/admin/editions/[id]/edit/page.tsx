@@ -17,7 +17,7 @@ type Edition = Database['public']['Tables']['editions']['Row']
 
 export default function EditEditionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
-  const { slug } = useTenant()
+  const { slug, id: tenantId, plan } = useTenant()
   const router = useRouter()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = createClient() as any
@@ -71,6 +71,21 @@ export default function EditEditionPage({ params }: { params: Promise<{ id: stri
       toast.error('La fecha de inicio debe ser anterior a la fecha de fin.')
       setLoading(false)
       return
+    }
+
+    // Free plan: only 1 active edition allowed
+    if (form.status === 'active' && plan === 'free') {
+      const { count } = await db
+        .from('editions')
+        .select('id', { count: 'exact', head: true })
+        .eq('tenant_id', tenantId)
+        .eq('status', 'active')
+        .neq('id', id)
+      if (count && count >= 1) {
+        toast.error('El plan gratuito solo permite 1 edición activa. Finalizá la edición actual antes de activar otra.')
+        setLoading(false)
+        return
+      }
     }
 
     let imageUrl: string | null | undefined = undefined

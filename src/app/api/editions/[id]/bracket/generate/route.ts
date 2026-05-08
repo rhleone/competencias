@@ -82,6 +82,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const { data: profile } = await db.from('profiles').select('role').eq('id', user.id).single()
   if (profile?.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
+  // Plan check
+  const { data: editionPlan } = await db.from('editions').select('tenant:tenant_id(plan)').eq('id', id).single()
+  if (editionPlan?.tenant?.plan === 'free') {
+    return NextResponse.json({ error: 'La generación de brackets requiere plan Básico o superior.' }, { status: 403 })
+  }
+
   const { disciplineId, includeThirdPlace = true } = await request.json()
   if (!disciplineId) return NextResponse.json({ error: 'disciplineId requerido' }, { status: 400 })
 

@@ -42,6 +42,12 @@ export async function POST(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = supabase as any
 
+    // Plan check
+    const { data: edition } = await db.from('editions').select('tenant:tenant_id(plan)').eq('id', id).single()
+    if (edition?.tenant?.plan === 'free') {
+      return NextResponse.json({ error: 'La generación automática de calendario requiere plan Básico o superior.' }, { status: 403 })
+    }
+
     // Delete existing scheduled matches and venue_slots for this edition
     const { error: deleteMatchesError } = await db
       .from('matches')
