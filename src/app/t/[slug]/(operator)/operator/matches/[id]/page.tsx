@@ -90,7 +90,10 @@ export default function MatchPage({ params }: { params: Promise<{ id: string }> 
   if (loading) return <p className="text-gray-500">Cargando partido...</p>
   if (!match) return <p className="text-gray-500">Partido no encontrado.</p>
 
+  const isPastMatch = match.scheduled_at ? match.scheduled_at < new Date().toISOString() : false
   const isEditable = match.status === 'live' || match.status === 'scheduled'
+  // Past scheduled matches show the result panel directly so operators can enter missed results
+  const showResultPanel = match.status === 'live' || match.status === 'finished' || (match.status === 'scheduled' && isPastMatch)
   const genderCls = match.discipline?.gender === 'M' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-pink-50 text-pink-700 border-pink-200'
 
   return (
@@ -137,13 +140,20 @@ export default function MatchPage({ params }: { params: Promise<{ id: string }> 
         </div>
       </div>
 
-      {match.status === 'scheduled' && (
+      {match.status === 'scheduled' && !isPastMatch && (
         <Button className="w-full bg-green-600 hover:bg-green-700" disabled={changingStatus} onClick={() => changeStatus('live')}>
           {changingStatus ? 'Iniciando...' : '▶ Iniciar Partido'}
         </Button>
       )}
 
-      {(match.status === 'live' || match.status === 'finished') && (
+      {match.status === 'scheduled' && isPastMatch && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-700 flex items-center gap-2">
+          <span>⚠</span>
+          <span>Partido no iniciado en su fecha — ingresá el resultado directamente.</span>
+        </div>
+      )}
+
+      {showResultPanel && (
         <div className="bg-white rounded-xl border p-5 space-y-5">
           <p className="font-medium text-sm text-gray-700">Resultado</p>
           <div className="grid grid-cols-2 gap-6">
@@ -170,7 +180,7 @@ export default function MatchPage({ params }: { params: Promise<{ id: string }> 
           </div>
           <div className="flex gap-3">
             {isEditable && <Button onClick={saveResult} disabled={saving} className="flex-1">{saving ? 'Guardando...' : 'Guardar resultado'}</Button>}
-            {match.status === 'live' && (
+            {(match.status === 'live' || (match.status === 'scheduled' && isPastMatch)) && (
               <Button variant="destructive" onClick={() => changeStatus('finished')} disabled={changingStatus} className="flex-1">
                 {changingStatus ? '...' : '■ Finalizar partido'}
               </Button>
