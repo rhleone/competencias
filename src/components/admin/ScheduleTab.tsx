@@ -65,6 +65,13 @@ interface ConfirmedMatch {
   discipline: { name: DisciplineType; gender: GenderType; match_duration_minutes: number } | null
 }
 
+interface DiscMatchStats {
+  finished: number
+  live: number
+  pastScheduled: number
+  futureScheduled: number
+}
+
 type ViewMode = 'jornada' | 'fecha' | 'disciplina'
 type TabState = 'config' | 'preview' | 'confirmed'
 
@@ -96,6 +103,7 @@ export default function ScheduleTab({ editionId, startDate, endDate }: { edition
   const [disciplines, setDisciplines] = useState<Discipline[]>([])
   const [discLoading, setDiscLoading] = useState(true)
   const [groupTeamCounts, setGroupTeamCounts] = useState<Map<string, number>>(new Map())
+  const [discMatchStats, setDiscMatchStats] = useState<Map<string, DiscMatchStats>>(new Map())
   const [selectedDiscIds, setSelectedDiscIds] = useState<Set<string>>(new Set())
   const [pendingDiscIds, setPendingDiscIds] = useState<string[]>([])
 
@@ -122,10 +130,11 @@ export default function ScheduleTab({ editionId, startDate, endDate }: { edition
 
   const load = useCallback(async () => {
     setDiscLoading(true)
-    const [{ data: discData }, { data: gd }, { data: bd }] = await Promise.all([
+    const [{ data: discData }, { data: gd }, { data: bd }, { data: matchStatsRaw }] = await Promise.all([
       db.from('disciplines').select('*').eq('edition_id', editionId).order('created_at'),
       db.from('groups').select('id, discipline_id, group_teams(team_id)').eq('edition_id', editionId),
       db.from('blocked_dates').select('id, date, reason').eq('edition_id', editionId).order('date'),
+      db.from('matches').select('discipline_id, status, scheduled_at').eq('edition_id', editionId).neq('status', 'postponed'),
     ])
     const discs = (discData as Discipline[]) ?? []
     setDisciplines(discs)
@@ -138,6 +147,23 @@ export default function ScheduleTab({ editionId, startDate, endDate }: { edition
     // Pre-select disciplines that are ready (≥2 teams in groups)
     setSelectedDiscIds(new Set(discs.filter((d) => (c.get(d.id) ?? 0) >= 2).map((d) => d.id)))
     setBlockedDates((bd as BlockedDate[]) ?? [])
+    // Compute per-discipline match stats to show context in the checklist
+    const todayStr = new Date().toISOString().split('T')[0]
+    const mStats = new Map<string, DiscMatchStats>()
+    if (matchStatsRaw) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ;(matchStatsRaw as any[]).forEach((m: any) => {
+        const s = mStats.get(m.discipline_id) ?? { finished: 0, live: 0, pastScheduled: 0, futureScheduled: 0 }
+        if (m.status === 'finished') s.finished++
+        else if (m.status === 'live') s.live++
+        else if (m.status === 'scheduled') {
+          if ((m.scheduled_at ?? '') <= `${todayStr}T23:59:59`) s.pastScheduled++
+          else s.futureScheduled++
+        }
+        mStats.set(m.discipline_id, s)
+      })
+    }
+    setDiscMatchStats(mStats)
     setDiscLoading(false)
   }, [editionId]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -346,6 +372,19 @@ export default function ScheduleTab({ editionId, startDate, endDate }: { edition
                         {teams === 0 ? 'Sin grupos/equipos' : `${teams} equipo${teams !== 1 ? 's' : ''} (mín. 2)`}
                       </span>
                     )}
+                    {(() => {
+                      const ms = discMatchStats.get(d.id)
+                      if (!ms) return null
+                      const immovable = ms.finished + ms.live + ms.pastScheduled
+                      const future = ms.futureScheduled
+                      if (immovable === 0 && future === 0) return null
+                      return (
+                        <span className="text-xs shrink-0 flex gap-2">
+                          {immovable > 0 && <span className="text-gray-400">{immovable} jugados</span>}
+                          {future > 0 && <span className="text-blue-500">{future} prog.</span>}
+                        </span>
+                      )
+                    })()}
                   </label>
                 )
               })}
@@ -355,7 +394,7 @@ export default function ScheduleTab({ editionId, startDate, endDate }: { edition
             )}
             {selectedDiscIds.size > 0 && (
               <p className="text-xs text-gray-400">
-                Solo se reemplazarán los partidos de las disciplinas seleccionadas. Las demás no se modifican.
+                Solo se modificarán los partidos <strong>futuros</strong> de las disciplinas seleccionadas. Los partidos jugados o de fechas pasadas no se tocan.
               </p>
             )}
           </div>
@@ -363,6 +402,21 @@ export default function ScheduleTab({ editionId, startDate, endDate }: { edition
           <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
             No hay disciplinas creadas en esta edición.
           </p>
+        )}
+
+        {[...selectedDiscIds].some((id) => {
+          const ms = discMatchStats.get(id)
+          return ms && (ms.finished > 0 || ms.live > 0 || ms.pastScheduled > 0 || ms.futureScheduled > 0)
+        }) && (
+          <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+            <p className="font-medium mb-1">Regeneración con partidos existentes</p>
+            <ul className="text-xs space-y-0.5 text-blue-700">
+              <li>· Partidos ya jugados: sus pares no se regeneran (se omiten automáticamente).</li>
+              <li>· Partidos pasados sin resultado: quedan intactos, accesibles desde "Pendientes".</li>
+              <li>· Partidos futuros sin resultado: se reprograman incluyendo al nuevo equipo.</li>
+              <li>· Nuevos partidos del equipo añadido: se agendarán desde mañana en adelante.</li>
+            </ul>
+          </div>
         )}
 
         <div className="flex items-center gap-3 flex-wrap">

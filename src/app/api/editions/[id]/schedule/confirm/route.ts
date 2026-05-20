@@ -48,8 +48,12 @@ export async function POST(
       return NextResponse.json({ error: 'La generación automática de calendario requiere plan Básico o superior.' }, { status: 403 })
     }
 
-    // Delete existing scheduled matches — scoped to selected disciplines if provided
-    const matchDeleteQ = db.from('matches').delete().eq('edition_id', id).eq('status', 'scheduled')
+    // Delete only FUTURE scheduled matches — preserve past/today (pending results) and finished/live
+    const todayCutoff = new Date().toISOString().split('T')[0]
+    const matchDeleteQ = db.from('matches').delete()
+      .eq('edition_id', id)
+      .eq('status', 'scheduled')
+      .gt('scheduled_at', `${todayCutoff}T23:59:59`)
     const { error: deleteMatchesError } = await (disciplineIds?.length ? matchDeleteQ.in('discipline_id', disciplineIds) : matchDeleteQ)
 
     if (deleteMatchesError) {
@@ -57,7 +61,9 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to clear existing schedule' }, { status: 500 })
     }
 
-    const slotDeleteQ = db.from('venue_slots').delete().eq('edition_id', id)
+    const slotDeleteQ = db.from('venue_slots').delete()
+      .eq('edition_id', id)
+      .gt('slot_date', todayCutoff)
     const { error: deleteSlotsError } = await (disciplineIds?.length ? slotDeleteQ.in('discipline_id', disciplineIds) : slotDeleteQ)
 
     if (deleteSlotsError) {

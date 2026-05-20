@@ -179,15 +179,59 @@ export async function POST(
       })))
     }
 
-    // 5. Generate available time slots for each discipline (respecting allowed days + blocked dates)
-    const allSlots = disciplines.flatMap((discipline) =>
-      generateAvailableSlots(
+    // 4c. Query immovable matches (finished, live, or scheduled in the past/today)
+    //     to avoid regenerating already-played or past-locked pairs.
+    const cutoffDate = new Date().toISOString().split('T')[0]
+    const { data: existingMatchesData } = await db
+      .from('matches')
+      .select('home_team_id, away_team_id, discipline_id, status, scheduled_at')
+      .eq('edition_id', id)
+      .in('discipline_id', disciplines.map((d) => d.id))
+      .in('status', ['finished', 'live', 'scheduled'])
+
+    const usedPairs = new Set<string>()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(existingMatchesData ?? []).forEach((m: any) => {
+      const isImmovable =
+        m.status === 'finished' ||
+        m.status === 'live' ||
+        (m.status === 'scheduled' && (m.scheduled_at ?? '') <= `${cutoffDate}T23:59:59`)
+      if (!isImmovable) return
+      const isHomeAway =
+        (disciplineMap.get(m.discipline_id) as Discipline & { match_legs?: string })?.match_legs === 'home_away'
+      // Always skip the exact DB direction
+      usedPairs.add(`${m.discipline_id}:${m.home_team_id}:${m.away_team_id}`)
+      // For single-leg, also skip the reverse to prevent duplicate fixtures
+      if (!isHomeAway) {
+        usedPairs.add(`${m.discipline_id}:${m.away_team_id}:${m.home_team_id}`)
+      }
+    })
+
+    const filteredMatchPairs = allMatchPairs.filter(
+      (p) => !usedPairs.has(`${p.disciplineId}:${p.homeTeamId}:${p.awayTeamId}`)
+    )
+
+    // 5. Generate available time slots — for disciplines with existing matches,
+    //    start from tomorrow at minimum so new pairs land in the future.
+    const tomorrow = new Date()
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    const tomorrowStr = tomorrow.toISOString().split('T')[0]
+    const disciplinesWithHistory = new Set<string>(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (existingMatchesData ?? []).map((m: any) => m.discipline_id as string)
+    )
+
+    const allSlots = disciplines.flatMap((discipline) => {
+      const effectiveStart = disciplinesWithHistory.has(discipline.id)
+        ? (dateRange.start > tomorrowStr ? dateRange.start : tomorrowStr)
+        : dateRange.start
+      return generateAvailableSlots(
         discipline as Discipline & { gender: 'M' | 'F' },
-        dateRange,
+        { start: effectiveStart, end: dateRange.end },
         allowedDays ?? [],
         blockedDates
       )
-    )
+    })
 
     // 6. Run the scheduling engine
     const config = {
@@ -196,7 +240,7 @@ export async function POST(
       disciplines: disciplines as (Discipline & { gender: 'M' | 'F' })[],
     }
 
-    const basePairs: MatchPair[] = allMatchPairs.map((p) => ({
+    const basePairs: MatchPair[] = filteredMatchPairs.map((p) => ({
       homeTeamId: p.homeTeamId,
       awayTeamId: p.awayTeamId,
       disciplineId: p.disciplineId,
