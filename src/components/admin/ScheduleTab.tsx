@@ -128,6 +128,13 @@ export default function ScheduleTab({ editionId, startDate, endDate }: { edition
   const [rescheduleForm, setRescheduleForm] = useState({ date: '', startTime: '', fieldNumber: 1 })
   const [savingReschedule, setSavingReschedule] = useState(false)
 
+  // Manual match creation
+  const [addMatchOpen, setAddMatchOpen] = useState(false)
+  const [addMatchForm, setAddMatchForm] = useState({ disciplineId: '', homeTeamId: '', awayTeamId: '', date: '', time: '', fieldNumber: 1, notes: '' })
+  const [addMatchTeams, setAddMatchTeams] = useState<{ id: string; name: string }[]>([])
+  const [loadingAddTeams, setLoadingAddTeams] = useState(false)
+  const [savingAddMatch, setSavingAddMatch] = useState(false)
+
   const load = useCallback(async () => {
     setDiscLoading(true)
     const [{ data: discData }, { data: gd }, { data: bd }, { data: matchStatsRaw }] = await Promise.all([
@@ -275,6 +282,53 @@ export default function ScheduleTab({ editionId, startDate, endDate }: { edition
     toast.success('Partido reprogramado')
     setReschedulingMatch(null)
     loadConfirmed()
+  }
+
+  async function loadTeamsForDisc(discId: string) {
+    if (!discId) { setAddMatchTeams([]); return }
+    setLoadingAddTeams(true)
+    const { data: groupsData } = await db
+      .from('groups')
+      .select('group_teams(team_id, teams(id, name))')
+      .eq('edition_id', editionId)
+      .eq('discipline_id', discId)
+    const seen = new Set<string>()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const teams: { id: string; name: string }[] = (groupsData ?? []).flatMap((g: any) =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (g.group_teams ?? []).map((gt: any) => gt.teams).filter(Boolean)
+    ).filter((t: { id: string; name: string }) => {
+      if (seen.has(t.id)) return false
+      seen.add(t.id); return true
+    })
+    teams.sort((a, b) => a.name.localeCompare(b.name))
+    setAddMatchTeams(teams)
+    setLoadingAddTeams(false)
+  }
+
+  async function saveManualMatch() {
+    const { disciplineId, homeTeamId, awayTeamId, date, time, fieldNumber, notes } = addMatchForm
+    if (!disciplineId || !homeTeamId || !awayTeamId || !date || !time) return
+    setSavingAddMatch(true)
+    try {
+      const r = await fetch(`/api/editions/${editionId}/matches`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({
+          disciplineId,
+          homeTeamId,
+          awayTeamId,
+          scheduledAt: `${date}T${time}:00`,
+          fieldNumber,
+          notes: notes || null,
+        }),
+      })
+      if (!r.ok) { toast.error((await r.json()).error ?? 'Error al crear partido'); return }
+      toast.success('Partido creado correctamente')
+      setAddMatchOpen(false)
+      setAddMatchForm({ disciplineId: '', homeTeamId: '', awayTeamId: '', date: '', time: '', fieldNumber: 1, notes: '' })
+      setAddMatchTeams([])
+      loadConfirmed()
+    } catch { toast.error('Error de conexión') } finally { setSavingAddMatch(false) }
   }
 
   // ============= CONFIG =============
@@ -448,7 +502,20 @@ export default function ScheduleTab({ editionId, startDate, endDate }: { edition
       <div className="space-y-5">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">Calendario Confirmado</h2>
-          <Button variant="outline" size="sm" onClick={() => { setResult(null); setState('config') }}>← Regenerar</Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setAddMatchForm({ disciplineId: '', homeTeamId: '', awayTeamId: '', date: '', time: '', fieldNumber: 1, notes: '' })
+                setAddMatchTeams([])
+                setAddMatchOpen(true)
+              }}
+            >
+              + Partido manual
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => { setResult(null); setState('config') }}>← Regenerar</Button>
+          </div>
         </div>
 
         {loadingConfirmed ? (
@@ -570,6 +637,126 @@ export default function ScheduleTab({ editionId, startDate, endDate }: { edition
             )}
           </>
         )}
+
+        {/* Manual match creation dialog */}
+        <Dialog open={addMatchOpen} onOpenChange={(open) => { if (!open) setAddMatchOpen(false) }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Agregar partido manual</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <p className="text-xs text-gray-500">Para partidos de desempate, reposición de suspendidos o partidos extra fuera del calendario automático.</p>
+
+              {/* Discipline */}
+              <div className="space-y-1.5">
+                <Label>Disciplina</Label>
+                <select
+                  className="w-full text-sm border rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  value={addMatchForm.disciplineId}
+                  onChange={(e) => {
+                    const discId = e.target.value
+                    setAddMatchForm((p) => ({ ...p, disciplineId: discId, homeTeamId: '', awayTeamId: '' }))
+                    loadTeamsForDisc(discId)
+                  }}
+                >
+                  <option value="">Seleccioná una disciplina</option>
+                  {disciplines.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {SPORT_LABELS[d.name]} {d.gender === 'M' ? 'Masculino' : 'Femenino'}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Teams */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Equipo local</Label>
+                  <select
+                    className="w-full text-sm border rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 disabled:bg-gray-50 disabled:text-gray-400"
+                    value={addMatchForm.homeTeamId}
+                    disabled={!addMatchForm.disciplineId || loadingAddTeams}
+                    onChange={(e) => setAddMatchForm((p) => ({ ...p, homeTeamId: e.target.value }))}
+                  >
+                    <option value="">{loadingAddTeams ? 'Cargando...' : 'Seleccioná equipo'}</option>
+                    {addMatchTeams
+                      .filter((t) => t.id !== addMatchForm.awayTeamId)
+                      .map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Equipo visitante</Label>
+                  <select
+                    className="w-full text-sm border rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 disabled:bg-gray-50 disabled:text-gray-400"
+                    value={addMatchForm.awayTeamId}
+                    disabled={!addMatchForm.disciplineId || loadingAddTeams}
+                    onChange={(e) => setAddMatchForm((p) => ({ ...p, awayTeamId: e.target.value }))}
+                  >
+                    <option value="">{loadingAddTeams ? 'Cargando...' : 'Seleccioná equipo'}</option>
+                    {addMatchTeams
+                      .filter((t) => t.id !== addMatchForm.homeTeamId)
+                      .map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {/* Date + time + field */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1.5 col-span-1">
+                  <Label>Fecha</Label>
+                  <Input
+                    type="date"
+                    value={addMatchForm.date}
+                    onChange={(e) => setAddMatchForm((p) => ({ ...p, date: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Hora</Label>
+                  <Input
+                    type="time"
+                    value={addMatchForm.time}
+                    onChange={(e) => setAddMatchForm((p) => ({ ...p, time: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Cancha N°</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={addMatchForm.fieldNumber}
+                    onChange={(e) => setAddMatchForm((p) => ({ ...p, fieldNumber: parseInt(e.target.value) || 1 }))}
+                  />
+                </div>
+              </div>
+
+              {/* Notes */}
+              <div className="space-y-1.5">
+                <Label>Motivo / notas <span className="text-gray-400 font-normal">(opcional)</span></Label>
+                <Input
+                  value={addMatchForm.notes}
+                  placeholder="Ej: Partido de desempate Grupo A, Reposición jornada 3…"
+                  onChange={(e) => setAddMatchForm((p) => ({ ...p, notes: e.target.value }))}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setAddMatchOpen(false)}>Cancelar</Button>
+              <Button
+                onClick={saveManualMatch}
+                disabled={
+                  savingAddMatch ||
+                  !addMatchForm.disciplineId ||
+                  !addMatchForm.homeTeamId ||
+                  !addMatchForm.awayTeamId ||
+                  !addMatchForm.date ||
+                  !addMatchForm.time
+                }
+              >
+                {savingAddMatch ? 'Creando...' : 'Crear partido'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Reschedule dialog */}
         <Dialog open={!!reschedulingMatch} onOpenChange={(open) => { if (!open) setReschedulingMatch(null) }}>
