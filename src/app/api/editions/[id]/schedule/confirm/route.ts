@@ -61,6 +61,15 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to clear existing schedule' }, { status: 500 })
     }
 
+    // Also delete postponed matches — the engine rescheduled them as new 'scheduled' matches
+    const postponedDeleteQ = db.from('matches').delete()
+      .eq('edition_id', id)
+      .eq('status', 'postponed')
+    const { error: deletePostponedError } = await (disciplineIds?.length ? postponedDeleteQ.in('discipline_id', disciplineIds) : postponedDeleteQ)
+    if (deletePostponedError) {
+      console.error('Error deleting postponed matches:', deletePostponedError)
+    }
+
     const slotDeleteQ = db.from('venue_slots').delete()
       .eq('edition_id', id)
       .gt('slot_date', todayCutoff)

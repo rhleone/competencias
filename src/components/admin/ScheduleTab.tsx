@@ -128,6 +128,9 @@ export default function ScheduleTab({ editionId, startDate, endDate }: { edition
   const [rescheduleForm, setRescheduleForm] = useState({ date: '', startTime: '', fieldNumber: 1 })
   const [savingReschedule, setSavingReschedule] = useState(false)
 
+  // Postponed match deletion
+  const [deletingPostponedId, setDeletingPostponedId] = useState<string | null>(null)
+
   // Manual match creation
   const [addMatchOpen, setAddMatchOpen] = useState(false)
   const [addMatchForm, setAddMatchForm] = useState({ disciplineId: '', homeTeamId: '', awayTeamId: '', date: '', time: '', fieldNumber: 1, notes: '' })
@@ -254,6 +257,18 @@ export default function ScheduleTab({ editionId, startDate, endDate }: { edition
     setSuspendingId(null)
     if (error) { toast.error('Error al suspender'); return }
     toast.success('Partido suspendido')
+    loadConfirmed()
+  }
+
+  async function deletePostponedMatch(matchId: string) {
+    if (!window.confirm('¿Anular este partido suspendido? Esta acción no se puede deshacer.')) return
+    setDeletingPostponedId(matchId)
+    const r = await fetch(`/api/editions/${editionId}/matches/${matchId}`, {
+      method: 'DELETE', credentials: 'include',
+    })
+    setDeletingPostponedId(null)
+    if (!r.ok) { toast.error((await r.json()).error ?? 'Error al anular el partido'); return }
+    toast.success('Partido anulado')
     loadConfirmed()
   }
 
@@ -625,9 +640,19 @@ export default function ScheduleTab({ editionId, startDate, endDate }: { edition
                           {m.scheduled_at ? `${fmtDate(toDate(m.scheduled_at))} ${toTime(m.scheduled_at)}` : '—'}
                         </td>
                         <td className="px-3 py-2 text-right">
-                          <Button size="sm" className="text-xs h-7" onClick={() => openReschedule(m)}>
-                            Reprogramar
-                          </Button>
+                          <div className="flex gap-1 justify-end">
+                            <Button size="sm" className="text-xs h-7" onClick={() => openReschedule(m)}>
+                              Reprogramar
+                            </Button>
+                            <Button
+                              size="sm" variant="ghost"
+                              className="text-xs h-7 text-red-500 hover:text-red-600 hover:bg-red-50"
+                              disabled={deletingPostponedId === m.id}
+                              onClick={() => deletePostponedMatch(m.id)}
+                            >
+                              {deletingPostponedId === m.id ? '...' : 'Anular'}
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                     ))}
