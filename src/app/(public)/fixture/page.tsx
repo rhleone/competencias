@@ -34,6 +34,7 @@ interface FixtureMatch {
 }
 
 interface DiscFilter { id: string; name: DisciplineType; gender: GenderType }
+interface FieldName { discipline_id: string; field_number: number; name: string }
 
 type StatusFilter = 'all' | 'upcoming' | 'live' | 'finished'
 
@@ -74,6 +75,9 @@ function FixtureContent() {
   const [error, setError] = useState<string | null>(null)
   const [editionName, setEditionName] = useState('')
   const [editionId, setEditionId] = useState<string | null>(null)
+
+  // Filters
+  const [fieldNames, setFieldNames] = useState<FieldName[]>([])
 
   // Filters
   const [discFilter, setDiscFilter] = useState<string>('all')
@@ -128,6 +132,9 @@ function FixtureContent() {
           setEditionId(edition.id)
           setEditionName(edition.name)
           await loadMatches(edition.id)
+          // Load court names
+          const fnRes = await fetch(`/api/editions/${edition.id}/field-names`)
+          if (fnRes.ok) { const { fieldNames: fn } = await fnRes.json(); setFieldNames(fn ?? []) }
         }
       } catch (e) {
         setError((e as Error).message)
@@ -279,9 +286,12 @@ function FixtureContent() {
                   <span className="text-xs text-gray-400">{dayMatches.length} partidos</span>
                 </div>
                 <div className="space-y-2">
-                  {dayMatches.map(m => (
-                    <FixtureMatchCard key={m.id} match={m} />
-                  ))}
+                  {dayMatches.map(m => {
+                    const courtName = m.discipline && m.field_number
+                      ? (fieldNames.find(fn => fn.discipline_id === m.discipline!.id && fn.field_number === m.field_number)?.name ?? `C${m.field_number}`)
+                      : null
+                    return <FixtureMatchCard key={m.id} match={m} courtName={courtName} />
+                  })}
                 </div>
               </div>
             ))}
@@ -298,7 +308,7 @@ function FixtureContent() {
   )
 }
 
-function FixtureMatchCard({ match }: { match: FixtureMatch }) {
+function FixtureMatchCard({ match, courtName }: { match: FixtureMatch; courtName: string | null }) {
   const isLive = match.status === 'live'
   const isFinished = match.status === 'finished'
   const isPostponed = match.status === 'postponed'
@@ -312,7 +322,7 @@ function FixtureMatchCard({ match }: { match: FixtureMatch }) {
         <span className={`font-mono font-semibold ${isLive ? 'text-green-600' : 'text-gray-600'}`}>
           {match.scheduled_at ? toTime(match.scheduled_at) : '—'}
         </span>
-        {match.field_number && <span>C{match.field_number}</span>}
+        {courtName && <span title={`C${match.field_number}`}>{courtName}</span>}
       </div>
 
       {/* Discipline badge */}

@@ -72,7 +72,15 @@ interface DiscMatchStats {
   futureScheduled: number
 }
 
+interface FieldName {
+  id: string
+  discipline_id: string
+  field_number: number
+  name: string
+}
+
 type ViewMode = 'jornada' | 'fecha' | 'disciplina'
+type ConfirmedView = 'fecha' | 'cancha'
 type TabState = 'config' | 'preview' | 'confirmed'
 
 function fmtDate(d: string) {
@@ -91,11 +99,15 @@ function addMins(time: string, mins: number) {
   const t = h * 60 + m + mins
   return `${Math.floor(t / 60).toString().padStart(2, '0')}:${(t % 60).toString().padStart(2, '0')}`
 }
+function resolveFieldName(fieldNames: FieldName[], disciplineId: string, fieldNumber: number | null): string {
+  if (!fieldNumber) return '—'
+  return fieldNames.find((fn) => fn.discipline_id === disciplineId && fn.field_number === fieldNumber)?.name ?? `C${fieldNumber}`
+}
 
 export default function ScheduleTab({ editionId, startDate, endDate }: { editionId: string; startDate: string; endDate: string }) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = createClient() as any
-  const { plan } = useTenant()
+  const { plan, id: tenantId } = useTenant()
   const [state, setState] = useState<TabState>('config')
   const [localStart, setLocalStart] = useState(startDate)
   const [localEnd, setLocalEnd] = useState(endDate)
@@ -133,6 +145,13 @@ export default function ScheduleTab({ editionId, startDate, endDate }: { edition
 
   // Manual match creation
   const [addMatchOpen, setAddMatchOpen] = useState(false)
+
+  // Field names (court naming)
+  const [fieldNames, setFieldNames] = useState<FieldName[]>([])
+  const [fieldNamesOpen, setFieldNamesOpen] = useState(false)
+  const [fieldNamesForm, setFieldNamesForm] = useState<Record<string, string>>({})
+  const [savingFieldNames, setSavingFieldNames] = useState(false)
+  const [confirmedView, setConfirmedView] = useState<ConfirmedView>('fecha')
   const [addMatchForm, setAddMatchForm] = useState({ disciplineId: '', homeTeamId: '', awayTeamId: '', date: '', time: '', fieldNumber: 1, notes: '' })
   const [addMatchTeams, setAddMatchTeams] = useState<{ id: string; name: string }[]>([])
   const [loadingAddTeams, setLoadingAddTeams] = useState(false)
@@ -189,8 +208,17 @@ export default function ScheduleTab({ editionId, startDate, endDate }: { edition
     setLoadingConfirmed(false)
   }, [editionId]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const loadFieldNames = useCallback(async () => {
+    const r = await fetch(`/api/editions/${editionId}/field-names`, { credentials: 'include' })
+    if (!r.ok) return
+    const { fieldNames: data } = await r.json()
+    setFieldNames(data ?? [])
+  }, [editionId])
+
   useEffect(() => { load() }, [load])
-  useEffect(() => { if (state === 'confirmed') loadConfirmed() }, [state, loadConfirmed])
+  useEffect(() => {
+    if (state === 'confirmed') { loadConfirmed(); loadFieldNames() }
+  }, [state, loadConfirmed, loadFieldNames])
 
   function toggleDay(v: number) { setAllowedDays((p) => p.includes(v) ? p.filter((d) => d !== v) : [...p, v].sort()) }
 
@@ -344,6 +372,86 @@ export default function ScheduleTab({ editionId, startDate, endDate }: { edition
       setAddMatchTeams([])
       loadConfirmed()
     } catch { toast.error('Error de conexión') } finally { setSavingAddMatch(false) }
+  }
+
+  async function saveFieldNames() {
+    setSavingFieldNames(true)
+    const items = Object.entries(fieldNamesForm)
+      .filter(([, name]) => name.trim().length > 0)
+      .map(([key, name]) => {
+        const [disciplineId, fieldNumberStr] = key.split('_')
+        return { disciplineId, fieldNumber: parseInt(fieldNumberStr), name: name.trim() }
+      })
+    try {
+      const r = await fetch(`/api/editions/${editionId}/field-names`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({ items, tenantId }),
+      })
+      if (!r.ok) { toast.error('Error al guardar canchas'); return }
+      const data = await r.json()
+      toast.success(`${data.saved} cancha${data.saved !== 1 ? 's' : ''} guardada${data.saved !== 1 ? 's' : ''}`)
+      setFieldNamesOpen(false)
+      await loadFieldNames()
+    } catch { toast.error('Error de conexión') } finally { setSavingFieldNames(false) }
+  }
+
+  function printSchedule() {
+    const scheduled = confirmedMatches.filter((m) => m.status === 'scheduled' && m.field_number)
+    const byCourt = new Map<string, ConfirmedMatch[]>()
+    scheduled.forEach((m) => {
+      const key = `${m.discipline_id}:${m.field_number}`
+      const arr = byCourt.get(key) ?? []; arr.push(m); byCourt.set(key, arr)
+    })
+    const courtKeys = [...byCourt.keys()].sort((a, b) => {
+      const [dA, nA] = a.split(':'); const [dB, nB] = b.split(':')
+      return dA.localeCompare(dB) || parseInt(nA) - parseInt(nB)
+    })
+
+    let html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Calendario por Cancha</title><style>
+      body{font-family:Arial,sans-serif;font-size:12px;color:#222;margin:20px}
+      h1{font-size:16px;margin-bottom:16px;color:#334155}
+      .court{margin-bottom:36px;page-break-inside:avoid}
+      .court-title{font-size:22px;font-weight:bold;background:#1e293b;color:#fff;padding:10px 16px;margin:0;border-radius:6px 6px 0 0}
+      .court-sub{font-size:11px;color:#64748b;background:#f8fafc;padding:4px 16px;border:1px solid #e2e8f0;border-top:none;margin:0 0 4px}
+      .date-hdr{font-size:12px;font-weight:bold;background:#f1f5f9;padding:5px 12px;border:1px solid #e2e8f0;text-transform:capitalize;margin:0}
+      table{width:100%;border-collapse:collapse;margin-bottom:4px}
+      th{background:#f8fafc;text-align:left;padding:5px 10px;font-size:10px;color:#64748b;border-bottom:1px solid #e2e8f0}
+      td{padding:5px 10px;border-bottom:1px solid #f1f5f9}
+      .mono{font-family:monospace;font-weight:bold}
+      @media print{.court{page-break-after:always}.court:last-child{page-break-after:avoid}}
+    </style></head><body>`
+    html += `<h1>Calendario de Partidos por Cancha</h1>`
+
+    courtKeys.forEach((key) => {
+      const [discId, fnStr] = key.split(':')
+      const fieldNumber = parseInt(fnStr)
+      const courtMatches = [...(byCourt.get(key) ?? [])].sort((a, b) => (a.scheduled_at ?? '').localeCompare(b.scheduled_at ?? ''))
+      const disc = disciplines.find((d) => d.id === discId)
+      const courtName = resolveFieldName(fieldNames, discId, fieldNumber)
+      const byDateMap = new Map<string, ConfirmedMatch[]>()
+      courtMatches.forEach((m) => {
+        if (!m.scheduled_at) return
+        const d = toDate(m.scheduled_at); const arr = byDateMap.get(d) ?? []; arr.push(m); byDateMap.set(d, arr)
+      })
+      html += `<div class="court"><h2 class="court-title">${courtName}</h2>`
+      if (disc) html += `<p class="court-sub">${SPORT_LABELS[disc.name]} ${GENDER_LABELS[disc.gender]}</p>`
+      ;[...byDateMap.keys()].sort().forEach((date) => {
+        html += `<p class="date-hdr">${fmtDate(date)}</p><table><thead><tr><th>Hora</th><th>J</th><th>Local</th><th>Visitante</th></tr></thead><tbody>`
+        ;(byDateMap.get(date) ?? []).sort((a, b) => (a.scheduled_at ?? '').localeCompare(b.scheduled_at ?? '')).forEach((m) => {
+          html += `<tr><td class="mono">${m.scheduled_at ? toTime(m.scheduled_at) : '—'}</td><td>${m.match_day != null ? `J${m.match_day}` : '—'}</td><td>${m.home_team?.name ?? '—'}</td><td>${m.away_team?.name ?? '—'}</td></tr>`
+        })
+        html += `</tbody></table>`
+      })
+      html += `</div>`
+    })
+    html += `</body></html>`
+
+    const win = window.open('', '_blank')
+    if (!win) { toast.error('El navegador bloqueó la ventana. Permití pop-ups para este sitio.'); return }
+    win.document.write(html)
+    win.document.close()
+    win.focus()
+    win.print()
   }
 
   // ============= CONFIG =============
@@ -513,11 +621,23 @@ export default function ScheduleTab({ editionId, startDate, endDate }: { edition
     })
     const dates = [...byDate.keys()].sort()
 
+    // Build cancha groups
+    const byCourt = new Map<string, ConfirmedMatch[]>()
+    scheduled.forEach((m) => {
+      if (!m.field_number) return
+      const key = `${m.discipline_id}:${m.field_number}`
+      const arr = byCourt.get(key) ?? []; arr.push(m); byCourt.set(key, arr)
+    })
+    const courtKeys = [...byCourt.keys()].sort((a, b) => {
+      const [dA, nA] = a.split(':'); const [dB, nB] = b.split(':')
+      return dA.localeCompare(dB) || parseInt(nA) - parseInt(nB)
+    })
+
     return (
       <div className="space-y-5">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-2">
           <h2 className="text-lg font-semibold">Calendario Confirmado</h2>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <Button
               variant="outline"
               size="sm"
@@ -528,6 +648,23 @@ export default function ScheduleTab({ editionId, startDate, endDate }: { edition
               }}
             >
               + Partido manual
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const form: Record<string, string> = {}
+                disciplines.forEach((d) => {
+                  for (let f = 1; f <= d.fields_available; f++) {
+                    const existing = fieldNames.find((fn) => fn.discipline_id === d.id && fn.field_number === f)
+                    form[`${d.id}_${f}`] = existing?.name ?? ''
+                  }
+                })
+                setFieldNamesForm(form)
+                setFieldNamesOpen(true)
+              }}
+            >
+              Canchas
             </Button>
             <Button variant="outline" size="sm" onClick={() => { setResult(null); setState('config') }}>← Regenerar</Button>
           </div>
@@ -542,14 +679,34 @@ export default function ScheduleTab({ editionId, startDate, endDate }: { edition
           </div>
         ) : (
           <>
-            <div className="flex flex-wrap gap-6 p-4 bg-gray-50 rounded-lg border text-sm">
-              <div><span className="font-semibold">{scheduled.length}</span> <span className="text-gray-500">programados</span></div>
-              <div><span className="font-semibold">{dates.length}</span> <span className="text-gray-500">fechas</span></div>
-              {postponed.length > 0 && (
-                <div><span className="font-semibold text-amber-600">{postponed.length}</span> <span className="text-amber-600">suspendidos</span></div>
-              )}
+            <div className="flex flex-wrap items-center gap-4 p-4 bg-gray-50 rounded-lg border text-sm">
+              <div className="flex flex-wrap gap-6 flex-1">
+                <div><span className="font-semibold">{scheduled.length}</span> <span className="text-gray-500">programados</span></div>
+                <div><span className="font-semibold">{dates.length}</span> <span className="text-gray-500">fechas</span></div>
+                <div><span className="font-semibold">{courtKeys.length}</span> <span className="text-gray-500">canchas</span></div>
+                {postponed.length > 0 && (
+                  <div><span className="font-semibold text-amber-600">{postponed.length}</span> <span className="text-amber-600">suspendidos</span></div>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="flex rounded-md border overflow-hidden text-xs">
+                  {(['fecha', 'cancha'] as ConfirmedView[]).map((v) => (
+                    <button key={v} onClick={() => setConfirmedView(v)}
+                      className={`px-3 py-1.5 capitalize transition ${confirmedView === v ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+                      Por {v}
+                    </button>
+                  ))}
+                </div>
+                {confirmedView === 'cancha' && (
+                  <Button size="sm" variant="outline" onClick={printSchedule} className="text-xs h-7">
+                    Exportar PDF
+                  </Button>
+                )}
+              </div>
             </div>
 
+            {/* VIEW: Por fecha */}
+            {confirmedView === 'fecha' && (<>
             {/* Scheduled matches grouped by date */}
             {dates.map((date) => {
               const matches = (byDate.get(date) ?? []).sort((a, b) =>
@@ -577,7 +734,7 @@ export default function ScheduleTab({ editionId, startDate, endDate }: { edition
                       {matches.map((m) => (
                         <tr key={m.id} className="hover:bg-gray-50">
                           <td className="px-3 py-2 font-mono font-medium">{m.scheduled_at ? toTime(m.scheduled_at) : '—'}</td>
-                          <td className="px-3 py-2 text-gray-400">{m.field_number}</td>
+                          <td className="px-3 py-2 text-gray-500 text-xs">{resolveFieldName(fieldNames, m.discipline_id, m.field_number)}</td>
                           <td className="px-3 py-2">
                             {m.discipline && (
                               <Badge className={`text-xs border ${gCls(m.discipline.gender)}`}>
@@ -603,6 +760,82 @@ export default function ScheduleTab({ editionId, startDate, endDate }: { edition
                 </div>
               )
             })}
+
+            </>)}
+
+            {/* VIEW: Por cancha */}
+            {confirmedView === 'cancha' && (
+              <div className="space-y-6">
+                {courtKeys.length === 0 ? (
+                  <p className="text-sm text-gray-400">No hay partidos programados.</p>
+                ) : courtKeys.map((key) => {
+                  const [discId, fnStr] = key.split(':')
+                  const fieldNumber = parseInt(fnStr)
+                  const courtMatches = [...(byCourt.get(key) ?? [])].sort((a, b) => (a.scheduled_at ?? '').localeCompare(b.scheduled_at ?? ''))
+                  const disc = disciplines.find((d) => d.id === discId)
+                  const courtName = resolveFieldName(fieldNames, discId, fieldNumber)
+                  const byDateCourt = new Map<string, ConfirmedMatch[]>()
+                  courtMatches.forEach((m) => {
+                    if (!m.scheduled_at) return
+                    const d = toDate(m.scheduled_at); const arr = byDateCourt.get(d) ?? []; arr.push(m); byDateCourt.set(d, arr)
+                  })
+                  return (
+                    <div key={key} className="border rounded-lg overflow-hidden shadow-sm">
+                      <div className="bg-slate-800 text-white px-4 py-3">
+                        <div className="text-lg font-bold tracking-wide">{courtName}</div>
+                        {disc && (
+                          <div className={`inline-flex items-center mt-1 text-xs px-2 py-0.5 rounded-full border font-medium ${gCls(disc.gender)}`}>
+                            {SPORT_LABELS[disc.name]} {GENDER_LABELS[disc.gender]}
+                          </div>
+                        )}
+                      </div>
+                      {[...byDateCourt.keys()].sort().map((date) => {
+                        const dayMatches = (byDateCourt.get(date) ?? []).sort((a, b) => (a.scheduled_at ?? '').localeCompare(b.scheduled_at ?? ''))
+                        return (
+                          <div key={date}>
+                            <div className="bg-slate-100 px-4 py-1.5 border-b flex items-center gap-3">
+                              <span className="font-semibold text-sm capitalize">{fmtDate(date)}</span>
+                              <span className="text-xs text-gray-500">{dayMatches.length} partidos</span>
+                            </div>
+                            <table className="w-full text-sm">
+                              <thead className="text-xs text-gray-500 border-b bg-gray-50">
+                                <tr>
+                                  <th className="text-left px-4 py-2">Hora</th>
+                                  <th className="text-left px-4 py-2">J</th>
+                                  <th className="text-left px-4 py-2">Local</th>
+                                  <th className="text-left px-4 py-2 text-gray-300">vs</th>
+                                  <th className="text-left px-4 py-2">Visitante</th>
+                                  <th className="px-4 py-2"></th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y">
+                                {dayMatches.map((m) => (
+                                  <tr key={m.id} className="hover:bg-slate-50">
+                                    <td className="px-4 py-2 font-mono font-semibold">{m.scheduled_at ? toTime(m.scheduled_at) : '—'}</td>
+                                    <td className="px-4 py-2 text-gray-400 text-xs">J{m.match_day}</td>
+                                    <td className="px-4 py-2 font-medium">{m.home_team?.name ?? '—'}</td>
+                                    <td className="px-4 py-2 text-gray-300 text-xs">vs</td>
+                                    <td className="px-4 py-2 font-medium">{m.away_team?.name ?? '—'}</td>
+                                    <td className="px-4 py-2 text-right">
+                                      <Button variant="ghost" size="sm"
+                                        className="text-xs text-amber-600 hover:text-amber-700 hover:bg-amber-50 h-7 px-2"
+                                        disabled={suspendingId === m.id}
+                                        onClick={() => suspendMatch(m.id)}>
+                                        {suspendingId === m.id ? '...' : 'Suspender'}
+                                      </Button>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
 
             {/* Postponed panel */}
             {postponed.length > 0 && (
@@ -778,6 +1011,44 @@ export default function ScheduleTab({ editionId, startDate, endDate }: { edition
                 }
               >
                 {savingAddMatch ? 'Creando...' : 'Crear partido'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Field names dialog */}
+        <Dialog open={fieldNamesOpen} onOpenChange={(open) => { if (!open) setFieldNamesOpen(false) }}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Nombrar canchas</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-5 py-2 max-h-[60vh] overflow-y-auto pr-1">
+              <p className="text-xs text-gray-500">Asigná un nombre a cada cancha por disciplina. Si se deja vacío se mostrará C1, C2, etc.</p>
+              {disciplines.map((d) => (
+                <div key={d.id} className="space-y-2">
+                  <div className={`inline-flex items-center text-xs px-2.5 py-1 rounded border font-medium ${gCls(d.gender)}`}>
+                    {SPORT_LABELS[d.name]} {GENDER_LABELS[d.gender]}
+                  </div>
+                  <div className="space-y-1.5">
+                    {Array.from({ length: d.fields_available }, (_, i) => i + 1).map((f) => (
+                      <div key={f} className="flex items-center gap-3">
+                        <span className="text-xs font-mono text-gray-400 w-6">C{f}</span>
+                        <Input
+                          className="flex-1 h-8 text-sm"
+                          placeholder={`Nombre de la cancha ${f}`}
+                          value={fieldNamesForm[`${d.id}_${f}`] ?? ''}
+                          onChange={(e) => setFieldNamesForm((p) => ({ ...p, [`${d.id}_${f}`]: e.target.value }))}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setFieldNamesOpen(false)}>Cancelar</Button>
+              <Button onClick={saveFieldNames} disabled={savingFieldNames}>
+                {savingFieldNames ? 'Guardando...' : 'Guardar nombres'}
               </Button>
             </DialogFooter>
           </DialogContent>

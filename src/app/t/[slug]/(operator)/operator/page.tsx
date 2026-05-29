@@ -13,8 +13,9 @@ const SPORT_LABELS: Record<DisciplineType, string> = {
 }
 
 interface Edition { id: string; name: string; status: EditionStatus }
+interface FieldName { discipline_id: string; field_number: number; name: string }
 interface DashboardMatch {
-  id: string; edition_id: string; scheduled_at: string | null; field_number: number | null
+  id: string; edition_id: string; discipline_id: string; scheduled_at: string | null; field_number: number | null
   status: MatchStatus; home_score: number | null; away_score: number | null
   home_team: { name: string; color: string | null; logo_url: string | null } | null
   away_team: { name: string; color: string | null; logo_url: string | null } | null
@@ -51,7 +52,7 @@ function fmtMatchDate(s: string) {
   return `${d}/${m}/${y} ${time?.slice(0, 5)}`
 }
 
-function MatchCard({ m, slug, selectedEdition }: { m: DashboardMatch; slug: string; selectedEdition: string }) {
+function MatchCard({ m, slug, selectedEdition, courtName }: { m: DashboardMatch; slug: string; selectedEdition: string; courtName: string }) {
   return (
     <div className={`bg-white rounded-lg border p-4 flex items-center justify-between gap-3 ${m.status === 'live' ? 'border-red-200 shadow-sm' : ''}`}>
       <div className="min-w-0 flex-1">
@@ -64,7 +65,7 @@ function MatchCard({ m, slug, selectedEdition }: { m: DashboardMatch; slug: stri
               {SPORT_LABELS[m.discipline.name]} {m.discipline.gender}
             </span>
           )}
-          <span className="text-xs text-gray-400 flex-shrink-0">C{m.field_number}</span>
+          <span className="text-xs text-gray-400 flex-shrink-0">{courtName}</span>
           <StatusBadge status={m.status} />
         </div>
         <p className="font-medium text-sm truncate flex items-center gap-1.5">
@@ -104,6 +105,15 @@ export default function OperatorDashboard() {
   const [pendingMatches, setPendingMatches] = useState<DashboardMatch[]>([])
   const [loading, setLoading] = useState(true)
   const [pendingCount, setPendingCount] = useState(0)
+  const [fieldNames, setFieldNames] = useState<FieldName[]>([])
+
+  useEffect(() => {
+    if (selectedEdition === 'all') { setFieldNames([]); return }
+    fetch(`/api/editions/${selectedEdition}/field-names`, { credentials: 'include' })
+      .then((r) => r.ok ? r.json() : { fieldNames: [] })
+      .then(({ fieldNames: fn }) => setFieldNames(fn ?? []))
+      .catch(() => {})
+  }, [selectedEdition])
 
   useEffect(() => {
     async function loadEditions() {
@@ -113,7 +123,7 @@ export default function OperatorDashboard() {
     loadEditions()
   }, [tenantId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const matchSelectFields = 'id, edition_id, scheduled_at, field_number, status, home_score, away_score, home_team:home_team_id(name, color, logo_url), away_team:away_team_id(name, color, logo_url), discipline:discipline_id(name, gender), edition:edition_id(name)'
+  const matchSelectFields = 'id, edition_id, discipline_id, scheduled_at, field_number, status, home_score, away_score, home_team:home_team_id(name, color, logo_url), away_team:away_team_id(name, color, logo_url), discipline:discipline_id(name, gender), edition:edition_id(name)'
 
   const loadMatches = useCallback(async () => {
     setLoading(true)
@@ -276,7 +286,7 @@ export default function OperatorDashboard() {
                   </div>
                   <div className="grid gap-3 sm:grid-cols-2">
                     {slotMatches.map((m) => (
-                      <MatchCard key={m.id} m={m} slug={slug} selectedEdition={selectedEdition} />
+                      <MatchCard key={m.id} m={m} slug={slug} selectedEdition={selectedEdition} courtName={fieldNames.find(fn => fn.discipline_id === m.discipline_id && fn.field_number === m.field_number)?.name ?? `C${m.field_number}`} />
                     ))}
                   </div>
                 </div>
@@ -306,7 +316,7 @@ export default function OperatorDashboard() {
                   </div>
                   <div className="grid gap-3 sm:grid-cols-2">
                     {dayMatches.map((m) => (
-                      <MatchCard key={m.id} m={m} slug={slug} selectedEdition={selectedEdition} />
+                      <MatchCard key={m.id} m={m} slug={slug} selectedEdition={selectedEdition} courtName={fieldNames.find(fn => fn.discipline_id === m.discipline_id && fn.field_number === m.field_number)?.name ?? `C${m.field_number}`} />
                     ))}
                   </div>
                 </div>

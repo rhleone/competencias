@@ -19,6 +19,7 @@ interface Edition {
 interface DashboardMatch {
   id: string
   edition_id: string
+  discipline_id: string
   scheduled_at: string | null
   field_number: number | null
   status: MatchStatus
@@ -29,6 +30,7 @@ interface DashboardMatch {
   discipline: { name: DisciplineType; gender: string } | null
   edition: { name: string } | null
 }
+interface FieldName { discipline_id: string; field_number: number; name: string }
 
 function StatusBadge({ status }: { status: MatchStatus }) {
   if (status === 'live') return (
@@ -48,6 +50,7 @@ export default function OperatorDashboard() {
   const [selectedEdition, setSelectedEdition] = useState<string>('all')
   const [matches, setMatches] = useState<DashboardMatch[]>([])
   const [loading, setLoading] = useState(true)
+  const [fieldNames, setFieldNames] = useState<FieldName[]>([])
   const today = new Date().toISOString().split('T')[0]
 
   useEffect(() => {
@@ -66,7 +69,7 @@ export default function OperatorDashboard() {
     setLoading(true)
     let query = supabase
       .from('matches')
-      .select('id, edition_id, scheduled_at, field_number, status, home_score, away_score, home_team:home_team_id(name, color, logo_url), away_team:away_team_id(name, color, logo_url), discipline:discipline_id(name, gender), edition:edition_id(name)')
+      .select('id, edition_id, discipline_id, scheduled_at, field_number, status, home_score, away_score, home_team:home_team_id(name, color, logo_url), away_team:away_team_id(name, color, logo_url), discipline:discipline_id(name, gender), edition:edition_id(name)')
       .gte('scheduled_at', `${today}T00:00:00`)
       .lte('scheduled_at', `${today}T23:59:59`)
       .neq('status', 'postponed')
@@ -80,6 +83,15 @@ export default function OperatorDashboard() {
     setMatches((data as DashboardMatch[]) ?? [])
     setLoading(false)
   }, [today, selectedEdition]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (selectedEdition !== 'all') {
+      fetch(`/api/editions/${selectedEdition}/field-names`, { credentials: 'include' })
+        .then((r) => r.ok ? r.json() : { fieldNames: [] })
+        .then(({ fieldNames: fn }) => setFieldNames(fn ?? []))
+        .catch(() => {})
+    } else { setFieldNames([]) }
+  }, [selectedEdition])
 
   useEffect(() => {
     loadMatches()
@@ -179,7 +191,7 @@ export default function OperatorDashboard() {
                               {SPORT_LABELS[m.discipline.name]} {m.discipline.gender}
                             </span>
                           )}
-                          <span className="text-xs text-gray-400 flex-shrink-0">C{m.field_number}</span>
+                          <span className="text-xs text-gray-400 flex-shrink-0">{fieldNames.find(fn => fn.discipline_id === m.discipline_id && fn.field_number === m.field_number)?.name ?? `C${m.field_number}`}</span>
                           <StatusBadge status={m.status} />
                         </div>
                         <p className="font-medium text-sm truncate flex items-center gap-1.5">
