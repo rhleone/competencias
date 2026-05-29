@@ -152,6 +152,8 @@ export default function ScheduleTab({ editionId, startDate, endDate }: { edition
   const [fieldNamesForm, setFieldNamesForm] = useState<Record<string, string>>({})
   const [savingFieldNames, setSavingFieldNames] = useState(false)
   const [confirmedView, setConfirmedView] = useState<ConfirmedView>('fecha')
+  const [courtDateFrom, setCourtDateFrom] = useState('')
+  const [courtDateTo, setCourtDateTo] = useState('')
   const [addMatchForm, setAddMatchForm] = useState({ disciplineId: '', homeTeamId: '', awayTeamId: '', date: '', time: '', fieldNumber: 1, notes: '' })
   const [addMatchTeams, setAddMatchTeams] = useState<{ id: string; name: string }[]>([])
   const [loadingAddTeams, setLoadingAddTeams] = useState(false)
@@ -396,7 +398,15 @@ export default function ScheduleTab({ editionId, startDate, endDate }: { edition
   }
 
   function printSchedule() {
-    const scheduled = confirmedMatches.filter((m) => m.status === 'scheduled' && m.field_number)
+    // Reuse the same date filter that's active on screen
+    const base = confirmedMatches.filter((m) => m.status === 'scheduled' && m.field_number)
+    const scheduled = base.filter((m) => {
+      if (!m.scheduled_at) return true
+      const d = toDate(m.scheduled_at)
+      if (courtDateFrom && d < courtDateFrom) return false
+      if (courtDateTo && d > courtDateTo) return false
+      return true
+    })
     // Group by resolved court name — same-named courts across disciplines are merged
     const byCourtPrint = new Map<string, ConfirmedMatch[]>()
     scheduled.forEach((m) => {
@@ -615,9 +625,18 @@ export default function ScheduleTab({ editionId, startDate, endDate }: { edition
     })
     const dates = [...byDate.keys()].sort()
 
+    // Apply court date filter
+    const courtFiltered = scheduled.filter((m) => {
+      if (!m.scheduled_at) return true
+      const d = toDate(m.scheduled_at)
+      if (courtDateFrom && d < courtDateFrom) return false
+      if (courtDateTo && d > courtDateTo) return false
+      return true
+    })
+
     // Build cancha groups — key is the resolved court name so same-named courts merge
     const byCourtName = new Map<string, ConfirmedMatch[]>()
-    scheduled.forEach((m) => {
+    courtFiltered.forEach((m) => {
       if (!m.field_number) return
       const name = resolveFieldName(fieldNames, m.discipline_id, m.field_number)
       const arr = byCourtName.get(name) ?? []; arr.push(m); byCourtName.set(name, arr)
@@ -757,6 +776,30 @@ export default function ScheduleTab({ editionId, startDate, endDate }: { edition
             {/* VIEW: Por cancha */}
             {confirmedView === 'cancha' && (
               <div className="space-y-6">
+                {/* Date range filter */}
+                <div className="flex flex-wrap items-center gap-3 p-3 bg-gray-50 border rounded-lg text-sm">
+                  <span className="text-gray-500 text-xs font-medium">Filtrar fechas:</span>
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-gray-400">Desde</label>
+                    <Input type="date" value={courtDateFrom} onChange={(e) => setCourtDateFrom(e.target.value)} className="h-7 text-xs w-36" />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-gray-400">Hasta</label>
+                    <Input type="date" value={courtDateTo} onChange={(e) => setCourtDateTo(e.target.value)} className="h-7 text-xs w-36" />
+                  </div>
+                  {(courtDateFrom || courtDateTo) && (
+                    <button onClick={() => { setCourtDateFrom(''); setCourtDateTo('') }}
+                      className="text-xs text-gray-400 hover:text-gray-700 underline">
+                      Limpiar
+                    </button>
+                  )}
+                  {(courtDateFrom || courtDateTo) && (
+                    <span className="text-xs text-blue-600 ml-auto">
+                      {courtFiltered.length} partido{courtFiltered.length !== 1 ? 's' : ''} en el rango
+                    </span>
+                  )}
+                </div>
+
                 {courtNameKeys.length === 0 ? (
                   <p className="text-sm text-gray-400">No hay partidos programados.</p>
                 ) : courtNameKeys.map((courtName) => {
