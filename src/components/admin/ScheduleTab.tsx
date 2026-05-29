@@ -397,48 +397,42 @@ export default function ScheduleTab({ editionId, startDate, endDate }: { edition
 
   function printSchedule() {
     const scheduled = confirmedMatches.filter((m) => m.status === 'scheduled' && m.field_number)
-    const byCourt = new Map<string, ConfirmedMatch[]>()
+    // Group by resolved court name — same-named courts across disciplines are merged
+    const byCourtPrint = new Map<string, ConfirmedMatch[]>()
     scheduled.forEach((m) => {
-      const key = `${m.discipline_id}:${m.field_number}`
-      const arr = byCourt.get(key) ?? []; arr.push(m); byCourt.set(key, arr)
+      const name = resolveFieldName(fieldNames, m.discipline_id, m.field_number)
+      const arr = byCourtPrint.get(name) ?? []; arr.push(m); byCourtPrint.set(name, arr)
     })
-    const courtKeys = [...byCourt.keys()].sort((a, b) => {
-      const [dA, nA] = a.split(':'); const [dB, nB] = b.split(':')
-      return dA.localeCompare(dB) || parseInt(nA) - parseInt(nB)
-    })
+    const printCourtKeys = [...byCourtPrint.keys()].sort()
 
     let html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Calendario por Cancha</title><style>
       body{font-family:Arial,sans-serif;font-size:12px;color:#222;margin:20px}
-      h1{font-size:16px;margin-bottom:16px;color:#334155}
+      h1{font-size:16px;margin-bottom:16px;color:#334155;text-align:center}
       .court{margin-bottom:36px;page-break-inside:avoid}
-      .court-title{font-size:22px;font-weight:bold;background:#1e293b;color:#fff;padding:10px 16px;margin:0;border-radius:6px 6px 0 0}
-      .court-sub{font-size:11px;color:#64748b;background:#f8fafc;padding:4px 16px;border:1px solid #e2e8f0;border-top:none;margin:0 0 4px}
+      .court-title{font-size:22px;font-weight:bold;background:#1e293b;color:#fff;padding:12px 16px;margin:0;border-radius:6px 6px 0 0;text-align:center;text-transform:uppercase;letter-spacing:0.1em}
       .date-hdr{font-size:12px;font-weight:bold;background:#f1f5f9;padding:5px 12px;border:1px solid #e2e8f0;text-transform:capitalize;margin:0}
       table{width:100%;border-collapse:collapse;margin-bottom:4px}
       th{background:#f8fafc;text-align:left;padding:5px 10px;font-size:10px;color:#64748b;border-bottom:1px solid #e2e8f0}
       td{padding:5px 10px;border-bottom:1px solid #f1f5f9}
       .mono{font-family:monospace;font-weight:bold}
+      .disc{font-size:10px;color:#475569;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:4px;padding:1px 5px;white-space:nowrap}
       @media print{.court{page-break-after:always}.court:last-child{page-break-after:avoid}}
     </style></head><body>`
     html += `<h1>Calendario de Partidos por Cancha</h1>`
 
-    courtKeys.forEach((key) => {
-      const [discId, fnStr] = key.split(':')
-      const fieldNumber = parseInt(fnStr)
-      const courtMatches = [...(byCourt.get(key) ?? [])].sort((a, b) => (a.scheduled_at ?? '').localeCompare(b.scheduled_at ?? ''))
-      const disc = disciplines.find((d) => d.id === discId)
-      const courtName = resolveFieldName(fieldNames, discId, fieldNumber)
+    printCourtKeys.forEach((courtName) => {
+      const courtMatches = [...(byCourtPrint.get(courtName) ?? [])].sort((a, b) => (a.scheduled_at ?? '').localeCompare(b.scheduled_at ?? ''))
       const byDateMap = new Map<string, ConfirmedMatch[]>()
       courtMatches.forEach((m) => {
         if (!m.scheduled_at) return
         const d = toDate(m.scheduled_at); const arr = byDateMap.get(d) ?? []; arr.push(m); byDateMap.set(d, arr)
       })
       html += `<div class="court"><h2 class="court-title">${courtName}</h2>`
-      if (disc) html += `<p class="court-sub">${SPORT_LABELS[disc.name]} ${GENDER_LABELS[disc.gender]}</p>`
       ;[...byDateMap.keys()].sort().forEach((date) => {
-        html += `<p class="date-hdr">${fmtDate(date)}</p><table><thead><tr><th>Hora</th><th>J</th><th>Local</th><th>Visitante</th></tr></thead><tbody>`
+        html += `<p class="date-hdr">${fmtDate(date)}</p><table><thead><tr><th>Hora</th><th>Disciplina</th><th>J</th><th>Local</th><th>Visitante</th></tr></thead><tbody>`
         ;(byDateMap.get(date) ?? []).sort((a, b) => (a.scheduled_at ?? '').localeCompare(b.scheduled_at ?? '')).forEach((m) => {
-          html += `<tr><td class="mono">${m.scheduled_at ? toTime(m.scheduled_at) : '—'}</td><td>${m.match_day != null ? `J${m.match_day}` : '—'}</td><td>${m.home_team?.name ?? '—'}</td><td>${m.away_team?.name ?? '—'}</td></tr>`
+          const discLabel = m.discipline ? `${SPORT_LABELS[m.discipline.name]} ${m.discipline.gender}` : '—'
+          html += `<tr><td class="mono">${m.scheduled_at ? toTime(m.scheduled_at) : '—'}</td><td><span class="disc">${discLabel}</span></td><td>${m.match_day != null ? `J${m.match_day}` : '—'}</td><td>${m.home_team?.name ?? '—'}</td><td>${m.away_team?.name ?? '—'}</td></tr>`
         })
         html += `</tbody></table>`
       })
@@ -621,17 +615,14 @@ export default function ScheduleTab({ editionId, startDate, endDate }: { edition
     })
     const dates = [...byDate.keys()].sort()
 
-    // Build cancha groups
-    const byCourt = new Map<string, ConfirmedMatch[]>()
+    // Build cancha groups — key is the resolved court name so same-named courts merge
+    const byCourtName = new Map<string, ConfirmedMatch[]>()
     scheduled.forEach((m) => {
       if (!m.field_number) return
-      const key = `${m.discipline_id}:${m.field_number}`
-      const arr = byCourt.get(key) ?? []; arr.push(m); byCourt.set(key, arr)
+      const name = resolveFieldName(fieldNames, m.discipline_id, m.field_number)
+      const arr = byCourtName.get(name) ?? []; arr.push(m); byCourtName.set(name, arr)
     })
-    const courtKeys = [...byCourt.keys()].sort((a, b) => {
-      const [dA, nA] = a.split(':'); const [dB, nB] = b.split(':')
-      return dA.localeCompare(dB) || parseInt(nA) - parseInt(nB)
-    })
+    const courtNameKeys = [...byCourtName.keys()].sort()
 
     return (
       <div className="space-y-5">
@@ -683,7 +674,7 @@ export default function ScheduleTab({ editionId, startDate, endDate }: { edition
               <div className="flex flex-wrap gap-6 flex-1">
                 <div><span className="font-semibold">{scheduled.length}</span> <span className="text-gray-500">programados</span></div>
                 <div><span className="font-semibold">{dates.length}</span> <span className="text-gray-500">fechas</span></div>
-                <div><span className="font-semibold">{courtKeys.length}</span> <span className="text-gray-500">canchas</span></div>
+                <div><span className="font-semibold">{courtNameKeys.length}</span> <span className="text-gray-500">canchas</span></div>
                 {postponed.length > 0 && (
                   <div><span className="font-semibold text-amber-600">{postponed.length}</span> <span className="text-amber-600">suspendidos</span></div>
                 )}
@@ -766,28 +757,19 @@ export default function ScheduleTab({ editionId, startDate, endDate }: { edition
             {/* VIEW: Por cancha */}
             {confirmedView === 'cancha' && (
               <div className="space-y-6">
-                {courtKeys.length === 0 ? (
+                {courtNameKeys.length === 0 ? (
                   <p className="text-sm text-gray-400">No hay partidos programados.</p>
-                ) : courtKeys.map((key) => {
-                  const [discId, fnStr] = key.split(':')
-                  const fieldNumber = parseInt(fnStr)
-                  const courtMatches = [...(byCourt.get(key) ?? [])].sort((a, b) => (a.scheduled_at ?? '').localeCompare(b.scheduled_at ?? ''))
-                  const disc = disciplines.find((d) => d.id === discId)
-                  const courtName = resolveFieldName(fieldNames, discId, fieldNumber)
+                ) : courtNameKeys.map((courtName) => {
+                  const courtMatches = [...(byCourtName.get(courtName) ?? [])].sort((a, b) => (a.scheduled_at ?? '').localeCompare(b.scheduled_at ?? ''))
                   const byDateCourt = new Map<string, ConfirmedMatch[]>()
                   courtMatches.forEach((m) => {
                     if (!m.scheduled_at) return
                     const d = toDate(m.scheduled_at); const arr = byDateCourt.get(d) ?? []; arr.push(m); byDateCourt.set(d, arr)
                   })
                   return (
-                    <div key={key} className="border rounded-lg overflow-hidden shadow-sm">
-                      <div className="bg-slate-800 text-white px-4 py-3">
-                        <div className="text-lg font-bold tracking-wide">{courtName}</div>
-                        {disc && (
-                          <div className={`inline-flex items-center mt-1 text-xs px-2 py-0.5 rounded-full border font-medium ${gCls(disc.gender)}`}>
-                            {SPORT_LABELS[disc.name]} {GENDER_LABELS[disc.gender]}
-                          </div>
-                        )}
+                    <div key={courtName} className="border rounded-lg overflow-hidden shadow-sm">
+                      <div className="bg-slate-800 text-white px-4 py-4 text-center">
+                        <div className="text-xl font-bold tracking-widest uppercase">{courtName}</div>
                       </div>
                       {[...byDateCourt.keys()].sort().map((date) => {
                         const dayMatches = (byDateCourt.get(date) ?? []).sort((a, b) => (a.scheduled_at ?? '').localeCompare(b.scheduled_at ?? ''))
@@ -801,6 +783,7 @@ export default function ScheduleTab({ editionId, startDate, endDate }: { edition
                               <thead className="text-xs text-gray-500 border-b bg-gray-50">
                                 <tr>
                                   <th className="text-left px-4 py-2">Hora</th>
+                                  <th className="text-left px-4 py-2">Disciplina</th>
                                   <th className="text-left px-4 py-2">J</th>
                                   <th className="text-left px-4 py-2">Local</th>
                                   <th className="text-left px-4 py-2 text-gray-300">vs</th>
@@ -812,6 +795,13 @@ export default function ScheduleTab({ editionId, startDate, endDate }: { edition
                                 {dayMatches.map((m) => (
                                   <tr key={m.id} className="hover:bg-slate-50">
                                     <td className="px-4 py-2 font-mono font-semibold">{m.scheduled_at ? toTime(m.scheduled_at) : '—'}</td>
+                                    <td className="px-4 py-2">
+                                      {m.discipline && (
+                                        <Badge className={`text-xs border ${gCls(m.discipline.gender)}`}>
+                                          {SPORT_LABELS[m.discipline.name]} {m.discipline.gender}
+                                        </Badge>
+                                      )}
+                                    </td>
                                     <td className="px-4 py-2 text-gray-400 text-xs">J{m.match_day}</td>
                                     <td className="px-4 py-2 font-medium">{m.home_team?.name ?? '—'}</td>
                                     <td className="px-4 py-2 text-gray-300 text-xs">vs</td>
