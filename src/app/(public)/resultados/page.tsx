@@ -16,6 +16,9 @@ const SPORT_LABELS: Record<DisciplineType, string> = {
 
 interface LiveMatch {
   id: string
+  group_id: string | null
+  home_team_id: string | null
+  away_team_id: string | null
   scheduled_at: string | null
   field_number: number | null
   status: MatchStatus
@@ -118,7 +121,7 @@ function ResultadosContent() {
   const loadTodayMatches = useCallback(async (eid: string) => {
     const { data } = await supabase
       .from('matches')
-      .select('id, scheduled_at, field_number, status, home_score, away_score, home_team:home_team_id(name, color, logo_url), away_team:away_team_id(name, color, logo_url), discipline:discipline_id(name, gender)')
+      .select('id, group_id, home_team_id, away_team_id, scheduled_at, field_number, status, home_score, away_score, home_team:home_team_id(name, color, logo_url), away_team:away_team_id(name, color, logo_url), discipline:discipline_id(name, gender)')
       .eq('edition_id', eid)
       .gte('scheduled_at', `${today}T00:00:00`)
       .lte('scheduled_at', `${today}T23:59:59`)
@@ -424,6 +427,9 @@ function ResultadosContent() {
 
                   if (groupStandings.length === 0) return null
 
+                  const groupLiveMatches = liveMatches.filter((m) => m.group_id === group.id)
+                  const hasLive = groupLiveMatches.length > 0
+
                   return (
                     <div key={group.id} className="bg-white rounded-lg border overflow-hidden">
                       <div className={`px-4 py-2.5 flex items-center gap-3 border-b ${group.discipline?.gender === 'M' ? 'bg-blue-50' : 'bg-pink-50'}`}>
@@ -434,6 +440,17 @@ function ResultadosContent() {
                         )}
                         <span className="font-semibold text-sm">{group.name}</span>
                       </div>
+
+                      {hasLive && (
+                        <div className="px-4 py-2 bg-green-50 border-b border-green-100 flex items-center gap-2 text-xs text-green-700 font-medium">
+                          <span className="relative flex h-2 w-2 shrink-0">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                            <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+                          </span>
+                          Resultado en vivo · Las posiciones pueden variar
+                        </div>
+                      )}
+
                       <div className="overflow-x-auto">
                         <table className="w-full text-sm">
                           <thead className="text-xs text-gray-500 bg-gray-50 border-b">
@@ -450,27 +467,50 @@ function ResultadosContent() {
                             </tr>
                           </thead>
                           <tbody className="divide-y">
-                            {groupStandings.map((s, i) => (
-                              <tr key={s.team_id} className={i === 0 && s.played > 0 ? 'bg-yellow-50' : 'hover:bg-gray-50'}>
-                                <td className="px-4 py-2.5 font-medium">
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-gray-400 text-xs">{i + 1}.</span>
-                                    <TeamLogo logoUrl={s.team_logo_url} color={s.team_color} name={s.team_name} size="xs" />
-                                    {s.team_name}
-                                  </div>
-                                </td>
-                                <td className="px-2 py-2.5 text-center text-gray-500">{s.played}</td>
-                                <td className="px-2 py-2.5 text-center text-green-600 font-medium">{s.won}</td>
-                                <td className="px-2 py-2.5 text-center text-gray-500">{s.drawn}</td>
-                                <td className="px-2 py-2.5 text-center text-red-500">{s.lost}</td>
-                                <td className="px-2 py-2.5 text-center text-gray-500">{s.goals_for}</td>
-                                <td className="px-2 py-2.5 text-center text-gray-500">{s.goals_against}</td>
-                                <td className="px-2 py-2.5 text-center text-gray-500">
-                                  {s.goal_difference > 0 ? `+${s.goal_difference}` : s.goal_difference}
-                                </td>
-                                <td className="px-3 py-2.5 text-center font-bold text-blue-700 text-base">{s.points}</td>
-                              </tr>
-                            ))}
+                            {groupStandings.map((s, i) => {
+                              const liveMatch = groupLiveMatches.find(
+                                (m) => m.home_team_id === s.team_id || m.away_team_id === s.team_id
+                              )
+                              const isHome = liveMatch?.home_team_id === s.team_id
+                              const liveScore = liveMatch
+                                ? isHome
+                                  ? `${liveMatch.home_score ?? 0}-${liveMatch.away_score ?? 0}`
+                                  : `${liveMatch.away_score ?? 0}-${liveMatch.home_score ?? 0}`
+                                : null
+
+                              return (
+                                <tr key={s.team_id} className={liveMatch ? 'bg-green-50' : i === 0 && s.played > 0 ? 'bg-yellow-50' : 'hover:bg-gray-50'}>
+                                  <td className="px-4 py-2.5 font-medium">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-gray-400 text-xs">{i + 1}.</span>
+                                      <TeamLogo logoUrl={s.team_logo_url} color={s.team_color} name={s.team_name} size="xs" />
+                                      {s.team_name}
+                                      {liveMatch && (
+                                        <>
+                                          <span className="relative flex h-2 w-2 shrink-0">
+                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                                            <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+                                          </span>
+                                          <span className="text-xs text-green-700 font-semibold bg-green-100 px-1.5 py-0.5 rounded tabular-nums">
+                                            {liveScore}
+                                          </span>
+                                        </>
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td className="px-2 py-2.5 text-center text-gray-500">{s.played}</td>
+                                  <td className="px-2 py-2.5 text-center text-green-600 font-medium">{s.won}</td>
+                                  <td className="px-2 py-2.5 text-center text-gray-500">{s.drawn}</td>
+                                  <td className="px-2 py-2.5 text-center text-red-500">{s.lost}</td>
+                                  <td className="px-2 py-2.5 text-center text-gray-500">{s.goals_for}</td>
+                                  <td className="px-2 py-2.5 text-center text-gray-500">{s.goals_against}</td>
+                                  <td className="px-2 py-2.5 text-center text-gray-500">
+                                    {s.goal_difference > 0 ? `+${s.goal_difference}` : s.goal_difference}
+                                  </td>
+                                  <td className="px-3 py-2.5 text-center font-bold text-blue-700 text-base">{s.points}</td>
+                                </tr>
+                              )
+                            })}
                           </tbody>
                         </table>
                       </div>
