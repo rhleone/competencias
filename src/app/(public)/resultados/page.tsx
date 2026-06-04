@@ -218,34 +218,37 @@ function ResultadosContent() {
     }
   }, [tab, editionId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Supabase Realtime + polling fallback for live score updates
+  // Supabase Realtime: reacts only when a match transitions to live or finished
   useEffect(() => {
     if (!editionId) return
 
-    // Full reload keeps join data intact (payload.new has only raw columns)
-    function refresh() {
-      loadTodayMatches(editionId!)
-      if (tab === 'posiciones') loadStandings(editionId!)
-    }
-
     const channel = supabase
       .channel('public-results')
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'matches' }, refresh)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'matches' }, (payload: { new: Record<string, unknown> }) => {
+        const newStatus = payload.new?.status as string | undefined
+        if (newStatus !== 'live' && newStatus !== 'finished') return
+        loadTodayMatches(editionId)
+        if (tab === 'posiciones') loadStandings(editionId)
+      })
       .subscribe()
 
-    // Polling every 20s as fallback when Realtime is not enabled in Supabase
-    const interval = setInterval(refresh, 20000)
-
-    return () => {
-      supabase.removeChannel(channel)
-      clearInterval(interval)
-    }
+    return () => { supabase.removeChannel(channel) }
   }, [editionId, tab]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Group today's matches
   const liveMatches = todayMatches.filter((m) => m.status === 'live')
   const scheduledMatches = todayMatches.filter((m) => m.status === 'scheduled')
   const finishedMatches = todayMatches.filter((m) => m.status === 'finished')
+
+  // Polling every 20s only while there are live matches (fallback when Realtime is disabled)
+  useEffect(() => {
+    if (!editionId || liveMatches.length === 0) return
+    const interval = setInterval(() => {
+      loadTodayMatches(editionId)
+      if (tab === 'posiciones') loadStandings(editionId)
+    }, 20000)
+    return () => clearInterval(interval)
+  }, [editionId, liveMatches.length, tab]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Unique disciplines for filter
   const disciplines = groups
