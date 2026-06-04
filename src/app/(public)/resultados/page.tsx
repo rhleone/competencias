@@ -221,15 +221,18 @@ function ResultadosContent() {
     }
   }, [tab, editionId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Supabase Realtime: reacts only when a match transitions to live or finished
+  // Supabase Realtime: reacts to status transitions (live/finished) and score changes during live matches
   useEffect(() => {
     if (!editionId) return
 
     const channel = supabase
       .channel('public-results')
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'matches' }, (payload: { new: Record<string, unknown> }) => {
-        const newStatus = payload.new?.status as string | undefined
-        if (newStatus !== 'live' && newStatus !== 'finished') return
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'matches' }, (payload: { old: Record<string, unknown>; new: Record<string, unknown> }) => {
+        const prev = payload.old
+        const next = payload.new
+        const statusChanged = next.status === 'live' || next.status === 'finished'
+        const scoreChanged = next.status === 'live' && (prev.home_score !== next.home_score || prev.away_score !== next.away_score)
+        if (!statusChanged && !scoreChanged) return
         loadTodayMatches(editionId)
         if (tab === 'posiciones') loadStandings(editionId)
       })
