@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { sortStandings } from '@/lib/standings-sort'
 
 // ─────────────────────────────────────────────
 // Bracket Math Helpers
@@ -107,20 +108,21 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const groups: { id: string; name: string }[] = groupsData ?? []
   if (groups.length === 0) return NextResponse.json({ error: 'No hay grupos definidos para esta disciplina.' }, { status: 400 })
 
-  // Load standings
+  // Load standings and finished group matches in parallel
   const groupIds = groups.map((g: { id: string }) => g.id)
-  const { data: standingsData } = await db.from('standings').select('group_id, team_id, points, goal_difference, goals_for').in('group_id', groupIds)
+  const [{ data: standingsData }, { data: matchesData }] = await Promise.all([
+    db.from('standings').select('group_id, team_id, points, goal_difference, goals_for').in('group_id', groupIds),
+    db.from('matches').select('group_id, home_team_id, away_team_id, home_score, away_score').in('group_id', groupIds).eq('status', 'finished'),
+  ])
+  const allGroupMatches = matchesData ?? []
 
-  // Build standings map per group (already sorted by view ORDER — but we re-sort for safety)
-  const standingsMap = new Map<string, { team_id: string; points: number; goal_difference: number; goals_for: number }[]>()
+  // Build standings map per group sorted by: points → goal_difference → head-to-head
+  type GroupStanding = { team_id: string; points: number; goal_difference: number; goals_for: number; group_id: string }
+  const standingsMap = new Map<string, GroupStanding[]>()
   for (const g of groups) {
-    const rows = (standingsData ?? [])
-      .filter((s: { group_id: string }) => s.group_id === g.id)
-      .sort((a: { points: number; goal_difference: number; goals_for: number }, b: { points: number; goal_difference: number; goals_for: number }) => {
-        if (b.points !== a.points) return b.points - a.points
-        if (b.goal_difference !== a.goal_difference) return b.goal_difference - a.goal_difference
-        return b.goals_for - a.goals_for
-      })
+    const groupTeams = ((standingsData ?? []) as GroupStanding[]).filter((s) => s.group_id === g.id)
+    const gMatches = allGroupMatches.filter((m: { group_id: string }) => m.group_id === g.id)
+    const rows = sortStandings(groupTeams, gMatches)
     standingsMap.set(g.id, rows)
   }
 

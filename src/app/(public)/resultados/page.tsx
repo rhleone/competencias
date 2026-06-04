@@ -8,6 +8,7 @@ import { APP_NAME } from '@/lib/app-config'
 import type { MatchStatus, DisciplineType, GenderType } from '@/types/database'
 import { TeamLogo } from '@/components/ui/team-logo'
 import { TenantContext } from '@/lib/tenant-context'
+import { sortStandings, type MatchRow } from '@/lib/standings-sort'
 
 const SPORT_LABELS: Record<DisciplineType, string> = {
   football: 'Fútbol', basketball: 'Basketball', volleyball: 'Voleyball', futsal: 'Fútbol Sala',
@@ -40,6 +41,8 @@ interface Standing {
   goal_difference: number
   points: number
 }
+
+type GroupMatch = MatchRow
 
 interface GroupInfo {
   id: string
@@ -99,6 +102,7 @@ function ResultadosContent() {
   const [todayMatches, setTodayMatches] = useState<LiveMatch[]>([])
   const [groups, setGroups] = useState<GroupInfo[]>([])
   const [standings, setStandings] = useState<Standing[]>([])
+  const [groupMatches, setGroupMatches] = useState<GroupMatch[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingStandings, setLoadingStandings] = useState(false)
   const [selectedDiscipline, setSelectedDiscipline] = useState<string>('all')
@@ -134,11 +138,19 @@ function ResultadosContent() {
 
     if (allGroups.length > 0) {
       const groupIds = allGroups.map((g) => g.id)
-      const { data: standingsData } = await supabase
-        .from('standings')
-        .select('group_id, team_id, team_name, team_color, team_logo_url, played, won, drawn, lost, goals_for, goals_against, goal_difference, points')
-        .in('group_id', groupIds)
+      const [{ data: standingsData }, { data: matchesData }] = await Promise.all([
+        supabase
+          .from('standings')
+          .select('group_id, team_id, team_name, team_color, team_logo_url, played, won, drawn, lost, goals_for, goals_against, goal_difference, points')
+          .in('group_id', groupIds),
+        supabase
+          .from('matches')
+          .select('group_id, home_team_id, away_team_id, home_score, away_score')
+          .in('group_id', groupIds)
+          .eq('status', 'finished'),
+      ])
       setStandings((standingsData as Standing[]) ?? [])
+      setGroupMatches((matchesData as GroupMatch[]) ?? [])
     }
     setLoadingStandings(false)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -402,9 +414,10 @@ function ResultadosContent() {
                 )}
 
                 {filteredGroups.map((group) => {
-                  const groupStandings = standings
-                    .filter((s) => s.group_id === group.id)
-                    .sort((a, b) => b.points - a.points || b.goal_difference - a.goal_difference || b.goals_for - a.goals_for)
+                  const groupStandings = sortStandings(
+                    standings.filter((s) => s.group_id === group.id),
+                    groupMatches.filter((m) => m.group_id === group.id)
+                  )
 
                   if (groupStandings.length === 0) return null
 
