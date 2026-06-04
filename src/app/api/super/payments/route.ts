@@ -24,9 +24,8 @@ export async function GET(_req: NextRequest) {
     .select(`
       id, plan_requested, amount, currency, method, status,
       months_granted, comprobante_url, notes, review_notes,
-      created_at, reviewed_at,
-      tenant:tenant_id(id, slug, name, plan),
-      submitter:submitted_by(id)
+      created_at, reviewed_at, submitted_by,
+      tenant:tenant_id(id, slug, name, plan)
     `)
     .order('created_at', { ascending: false })
 
@@ -35,7 +34,7 @@ export async function GET(_req: NextRequest) {
   // Fetch submitter profiles separately
   const submitterIds: string[] = [...new Set(
     (payments ?? [])
-      .map((p: { submitter: { id: string } | null }) => p.submitter?.id)
+      .map((p: { submitted_by: string | null }) => p.submitted_by)
       .filter(Boolean) as string[]
   )]
 
@@ -52,12 +51,11 @@ export async function GET(_req: NextRequest) {
       id: string; plan_requested: string; amount: number; currency: string
       method: string; status: string; months_granted: number
       comprobante_url: string | null; notes: string | null; review_notes: string | null
-      created_at: string; reviewed_at: string | null
+      created_at: string; reviewed_at: string | null; submitted_by: string | null
       tenant: { id: string; slug: string; name: string; plan: string } | null
-      submitter: { id: string } | null
     }) => ({
       ...p,
-      submitter_profile: p.submitter?.id ? profileMap.get(p.submitter.id) ?? null : null,
+      submitter_profile: p.submitted_by ? profileMap.get(p.submitted_by) ?? null : null,
     })),
   })
 }
