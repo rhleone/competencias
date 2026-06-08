@@ -202,8 +202,11 @@ export default function BracketTab({ editionId }: Props) {
       if (groups.length === 0) { setPreview(null); setLoadingPreview(false); return }
 
       const groupIds = groups.map((g: { id: string }) => g.id)
-      const { data: standingsData } = await db.from('standings').select('group_id, team_id, team:team_id(name)').in('group_id', groupIds)
-      const rows: { group_id: string; team_id: string; team: { name: string } | null }[] = standingsData ?? []
+      // Query standings without foreign-key join (views don't expose FK to PostgREST)
+      const { data: standingsData } = await db.from('standings')
+        .select('group_id, team_id, points, goal_difference, goals_for')
+        .in('group_id', groupIds)
+      const rows: { group_id: string; team_id: string; points: number; goal_difference: number; goals_for: number }[] = standingsData ?? []
 
       // Count qualifying per group
       let total = 0
@@ -222,16 +225,30 @@ export default function BracketTab({ editionId }: Props) {
       if (includeThirdPlace && bracketSize >= 4) roundNames.splice(roundNames.length - 1, 0, '3er Puesto')
 
       // Build expected first-round crossings for cross_group mode (display only)
+      // Fetch team names separately (standings is a view — no FK join available)
       let crossings: { home: string; away: string }[] | undefined
       if (seedingMode === 'cross_group' && groups.length === 2) {
-        const groupATeams = rows.filter(r => r.group_id === groups[0].id).slice(0, qpg)
-        const groupBTeams = rows.filter(r => r.group_id === groups[1].id).slice(0, qpg)
+        const allTeamIds = [...new Set(rows.map(r => r.team_id))]
+        const { data: teamsData } = await db.from('teams').select('id, name').in('id', allTeamIds)
+        const teamNameMap = new Map<string, string>((teamsData ?? []).map((t: { id: string; name: string }) => [t.id, t.name]))
+
+        const sortRows = (groupId: string) =>
+          rows.filter(r => r.group_id === groupId)
+            .sort((a, b) => {
+              if (b.points !== a.points) return b.points - a.points
+              if (b.goal_difference !== a.goal_difference) return b.goal_difference - a.goal_difference
+              return b.goals_for - a.goals_for
+            })
+            .slice(0, qpg)
+
+        const groupATeams = sortRows(groups[0].id)
+        const groupBTeams = sortRows(groups[1].id)
         const K = Math.min(qpg, groupATeams.length, groupBTeams.length)
         crossings = []
         for (let k = 0; k < K; k++) {
-          const teamA = groupATeams[k]?.team?.name ?? `${groups[0].name} #${k + 1}`
-          const teamB = groupBTeams[K - 1 - k]?.team?.name ?? `${groups[1].name} #${K - k}`
-          crossings.push({ home: `${k + 1}° ${groups[0].name}: ${teamA}`, away: `${K - k}° ${groups[1].name}: ${teamB}` })
+          const nameA = teamNameMap.get(groupATeams[k]?.team_id ?? '') ?? `${groups[0].name} #${k + 1}`
+          const nameB = teamNameMap.get(groupBTeams[K - 1 - k]?.team_id ?? '') ?? `${groups[1].name} #${K - k}`
+          crossings.push({ home: `${k + 1}° ${groups[0].name}: ${nameA}`, away: `${K - k}° ${groups[1].name}: ${nameB}` })
         }
       }
 
@@ -276,20 +293,19 @@ export default function BracketTab({ editionId }: Props) {
       if (groups.length === 0) return
 
       const groupIds = groups.map(g => g.id)
+      // standings is a view — query raw columns, then fetch team details separately
       const { data: standingsData } = await db.from('standings')
-        .select('group_id, team_id, points, goal_difference, goals_for, team:team_id(id, name, color)')
+        .select('group_id, team_id, points, goal_difference, goals_for')
         .in('group_id', groupIds)
+      const standingsRows: { group_id: string; team_id: string; points: number; goal_difference: number; goals_for: number }[] = standingsData ?? []
 
       const disc = disciplines.find(d => d.id === selectedDisc)
       const qpg = disc?.qualifying_per_group ?? 2
 
-      // Build sorted standings per group, take top qpg
-      const teams: QualifiedTeam[] = []
+      // Collect top qpg team IDs per group (sorted by merit)
+      const qualifyingIds: string[] = []
       for (const g of groups) {
-        const rows = ((standingsData ?? []) as {
-          group_id: string; team_id: string; points: number; goal_difference: number; goals_for: number;
-          team: { id: string; name: string; color: string | null } | null
-        }[])
+        standingsRows
           .filter(r => r.group_id === g.id)
           .sort((a, b) => {
             if (b.points !== a.points) return b.points - a.points
@@ -297,10 +313,29 @@ export default function BracketTab({ editionId }: Props) {
             return b.goals_for - a.goals_for
           })
           .slice(0, qpg)
+          .forEach(r => qualifyingIds.push(r.team_id))
+      }
 
-        rows.forEach((r, i) => {
-          if (r.team) teams.push({ id: r.team.id, name: r.team.name, color: r.team.color, groupName: g.name, position: i + 1 })
-        })
+      // Fetch team details in one query
+      const { data: teamsData } = await db.from('teams').select('id, name, color').in('id', qualifyingIds)
+      const teamMap = new Map<string, { id: string; name: string; color: string | null }>(
+        (teamsData ?? []).map((t: { id: string; name: string; color: string | null }) => [t.id, t])
+      )
+
+      const teams: QualifiedTeam[] = []
+      for (const g of groups) {
+        standingsRows
+          .filter(r => r.group_id === g.id)
+          .sort((a, b) => {
+            if (b.points !== a.points) return b.points - a.points
+            if (b.goal_difference !== a.goal_difference) return b.goal_difference - a.goal_difference
+            return b.goals_for - a.goals_for
+          })
+          .slice(0, qpg)
+          .forEach((r, i) => {
+            const t = teamMap.get(r.team_id)
+            if (t) teams.push({ id: t.id, name: t.name, color: t.color, groupName: g.name, position: i + 1 })
+          })
       }
       setQualifiedTeams(teams)
     }
