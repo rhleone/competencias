@@ -236,11 +236,11 @@ export default function DisciplinesTab({ editionId }: Props) {
 
       {/* Add/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>{editing ? 'Editar Disciplina' : 'Agregar Disciplina'}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-2">
+          <div className="space-y-4 py-2 overflow-y-auto flex-1 pr-1">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Deporte</Label>
