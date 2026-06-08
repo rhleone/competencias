@@ -52,6 +52,7 @@ const defaultForm = {
   enable_cross_group: false,
   qualifying_per_group: 2,
   best_thirds_count: 0,
+  seeding_mode: 'merit',
   max_matches_per_day: 1,
 }
 
@@ -107,6 +108,7 @@ export default function DisciplinesTab({ editionId }: Props) {
       enable_cross_group: d.enable_cross_group ?? false,
       qualifying_per_group: d.qualifying_per_group ?? 2,
       best_thirds_count: d.best_thirds_count ?? 0,
+      seeding_mode: d.seeding_mode ?? 'merit',
       max_matches_per_day: d.max_matches_per_day ?? 1,
     })
     setDialogOpen(true)
@@ -410,6 +412,26 @@ export default function DisciplinesTab({ editionId }: Props) {
                   />
                   <p className="text-xs text-gray-400">Mejores (N+1)ros clasificados entre todos los grupos</p>
                 </div>
+              </div>
+              <div className="mt-4 space-y-2">
+                <Label>Modo de cruces en 1ª ronda</Label>
+                <Select
+                  value={form.seeding_mode}
+                  onValueChange={(v) => setForm((prev) => ({ ...prev, seeding_mode: v ?? 'merit' }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="merit">Por mérito global — mejor seed vs peor seed</SelectItem>
+                    <SelectItem value="cross_group">Cruces cruzados — 1°A vs K°B, 2°A vs (K-1)°B… (2 grupos)</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-gray-400">
+                  {form.seeding_mode === 'cross_group'
+                    ? 'Los primeros de un grupo cruzan con los últimos del otro. Requiere exactamente 2 grupos.'
+                    : 'Todos los clasificados se ordenan por mérito y el bracket se forma con seeding estándar.'}
+                </p>
               </div>
             </div>
           </div>

@@ -97,11 +97,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (existing?.length > 0) return NextResponse.json({ error: 'Ya existe un bracket para esta disciplina. Eliminalo primero.' }, { status: 409 })
 
   // Load discipline config
-  const { data: disc, error: discErr } = await db.from('disciplines').select('id, qualifying_per_group, best_thirds_count').eq('id', disciplineId).single()
+  const { data: disc, error: discErr } = await db.from('disciplines').select('id, qualifying_per_group, best_thirds_count, seeding_mode').eq('id', disciplineId).single()
   if (discErr || !disc) return NextResponse.json({ error: 'Disciplina no encontrada' }, { status: 404 })
 
   const qualifyingPerGroup: number = disc.qualifying_per_group ?? 2
   const bestThirdsCount: number = disc.best_thirds_count ?? 0
+  const seedingMode: string = disc.seeding_mode ?? 'merit'
 
   // Load groups ordered by name
   const { data: groupsData } = await db.from('groups').select('id, name').eq('edition_id', id).eq('discipline_id', disciplineId).order('name')
@@ -127,43 +128,53 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
 
   // ─── Seed Collection ───────────────────────────────────────────────────────
-  // Seeds are assigned in tiers:
-  //   Tier 0: best 1st-place teams (sorted cross-group by quality)
-  //   Tier 1: best 2nd-place teams (sorted cross-group by quality)
-  //   ...
-  //   Best thirds (optional)
   const allSeeds: { teamId: string }[] = []
 
-  for (let pos = 0; pos < qualifyingPerGroup; pos++) {
-    const tier: { teamId: string; points: number; goalDiff: number; goalsFor: number }[] = []
-    for (const g of groups) {
-      const row = standingsMap.get(g.id)?.[pos]
-      if (row) tier.push({ teamId: row.team_id, points: row.points, goalDiff: row.goal_difference, goalsFor: row.goals_for })
+  if (seedingMode === 'cross_group' && groups.length === 2) {
+    // Cross-group interleaving: 1°A vs K°B, 2°A vs (K-1)°B, …
+    // Requires exactly 2 groups. Each pair occupies consecutive seed slots so
+    // they meet in the first round when sequential slot assignment is used.
+    const groupA = standingsMap.get(groups[0].id) ?? []
+    const groupB = standingsMap.get(groups[1].id) ?? []
+    const K = qualifyingPerGroup
+    for (let k = 0; k < K; k++) {
+      const fromA = groupA[k]
+      const fromB = groupB[K - 1 - k]
+      if (fromA) allSeeds.push({ teamId: fromA.team_id })
+      if (fromB) allSeeds.push({ teamId: fromB.team_id })
     }
-    // Sort tier by merit (best first within this position)
-    tier.sort((a, b) => {
-      if (b.points !== a.points) return b.points - a.points
-      if (b.goalDiff !== a.goalDiff) return b.goalDiff - a.goalDiff
-      return b.goalsFor - a.goalsFor
-    })
-    allSeeds.push(...tier.map(t => ({ teamId: t.teamId })))
-  }
+  } else {
+    // Merit seeding: collect qualifiers by position across all groups,
+    // sort each tier by points → goal difference → goals for.
+    for (let pos = 0; pos < qualifyingPerGroup; pos++) {
+      const tier: { teamId: string; points: number; goalDiff: number; goalsFor: number }[] = []
+      for (const g of groups) {
+        const row = standingsMap.get(g.id)?.[pos]
+        if (row) tier.push({ teamId: row.team_id, points: row.points, goalDiff: row.goal_difference, goalsFor: row.goals_for })
+      }
+      tier.sort((a, b) => {
+        if (b.points !== a.points) return b.points - a.points
+        if (b.goalDiff !== a.goalDiff) return b.goalDiff - a.goalDiff
+        return b.goalsFor - a.goalsFor
+      })
+      allSeeds.push(...tier.map(t => ({ teamId: t.teamId })))
+    }
 
-  // Best thirds
-  if (bestThirdsCount > 0) {
-    const thirdsPos = qualifyingPerGroup
-    const thirds: { teamId: string; points: number; goalDiff: number; goalsFor: number }[] = []
-    for (const g of groups) {
-      const row = standingsMap.get(g.id)?.[thirdsPos]
-      if (row) thirds.push({ teamId: row.team_id, points: row.points, goalDiff: row.goal_difference, goalsFor: row.goals_for })
+    // Best thirds (only for merit mode)
+    if (bestThirdsCount > 0) {
+      const thirdsPos = qualifyingPerGroup
+      const thirds: { teamId: string; points: number; goalDiff: number; goalsFor: number }[] = []
+      for (const g of groups) {
+        const row = standingsMap.get(g.id)?.[thirdsPos]
+        if (row) thirds.push({ teamId: row.team_id, points: row.points, goalDiff: row.goal_difference, goalsFor: row.goals_for })
+      }
+      thirds.sort((a, b) => {
+        if (b.points !== a.points) return b.points - a.points
+        if (b.goalDiff !== a.goalDiff) return b.goalDiff - a.goalDiff
+        return b.goalsFor - a.goalsFor
+      })
+      allSeeds.push(...thirds.slice(0, bestThirdsCount).map(t => ({ teamId: t.teamId })))
     }
-    thirds.sort((a, b) => {
-      if (b.points !== a.points) return b.points - a.points
-      if (b.goalDiff !== a.goalDiff) return b.goalDiff - a.goalDiff
-      return b.goalsFor - a.goalsFor
-    })
-    const qualified = thirds.slice(0, bestThirdsCount)
-    allSeeds.push(...qualified.map(t => ({ teamId: t.teamId })))
   }
 
   const total = allSeeds.length
@@ -173,7 +184,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const bracketSize = nextPow2(total)
   const byes = bracketSize - total
   const rounds = getRoundDefs(bracketSize)
-  const seedingSlots = getSeedingSlots(bracketSize)
+  // cross_group: pairs are already consecutive in allSeeds → sequential slot assignment
+  // merit: redistribute via standard tournament seeding (best seed meets worst in final)
+  const seedingSlots = (seedingMode === 'cross_group' && groups.length === 2)
+    ? Array.from({ length: bracketSize }, (_, i) => i + 1)
+    : getSeedingSlots(bracketSize)
 
   // ─── Phase Helper ─────────────────────────────────────────────────────────
   async function ensurePhase(phaseType: string, phaseName: string, orderIndex: number): Promise<string> {
@@ -298,13 +313,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const totalCreated = rounds.reduce((acc, r) => acc + r.positions.length, 0) + (thirdPlaceId ? 1 : 0)
     const roundNames = [...rounds.map(r => r.phaseName), ...(thirdPlaceId ? ['3er Puesto'] : [])]
 
+    const modeLabel = seedingMode === 'cross_group' ? 'cruces cruzados' : 'seeding por mérito'
     return NextResponse.json({
       ok: true,
       total,
       bracketSize,
       byes,
       rounds: roundNames,
-      message: `Bracket generado: ${total} equipos, ${byes} BYE(s), ${totalCreated} partidos (${roundNames.join(' → ')}).`,
+      message: `Bracket generado (${modeLabel}): ${total} equipos, ${byes} BYE(s), ${totalCreated} partidos (${roundNames.join(' → ')}).`,
     })
   } catch (err) {
     return NextResponse.json({ error: (err as Error).message }, { status: 500 })

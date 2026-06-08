@@ -56,6 +56,7 @@ interface BracketPreview {
   byes: number
   rounds: string[]
   message: string
+  crossings?: { home: string; away: string }[]
 }
 
 interface Props { editionId: string }
@@ -181,15 +182,16 @@ export default function BracketTab({ editionId }: Props) {
 
       const qpg = disc.qualifying_per_group ?? 2
       const btc = disc.best_thirds_count ?? 0
+      const seedingMode = (disc as Discipline & { seeding_mode?: string }).seeding_mode ?? 'merit'
 
       // Load groups and standings to calculate total
       const { data: groupsData } = await supabase.from('groups').select('id, name').eq('edition_id', editionId).eq('discipline_id', discId).order('name')
-      const groups: { id: string }[] = groupsData ?? []
+      const groups: { id: string; name: string }[] = groupsData ?? []
       if (groups.length === 0) { setPreview(null); setLoadingPreview(false); return }
 
       const groupIds = groups.map((g: { id: string }) => g.id)
-      const { data: standingsData } = await db.from('standings').select('group_id, team_id').in('group_id', groupIds)
-      const rows: { group_id: string }[] = standingsData ?? []
+      const { data: standingsData } = await db.from('standings').select('group_id, team_id, team:team_id(name)').in('group_id', groupIds)
+      const rows: { group_id: string; team_id: string; team: { name: string } | null }[] = standingsData ?? []
 
       // Count qualifying per group
       let total = 0
@@ -197,7 +199,7 @@ export default function BracketTab({ editionId }: Props) {
         const count = rows.filter((r) => r.group_id === g.id).length
         total += Math.min(qpg, count)
       }
-      total += Math.min(btc, Math.max(0, rows.length - total)) // approximate best thirds
+      total += Math.min(btc, Math.max(0, rows.length - total))
 
       if (total < 2) { setPreview(null); setLoadingPreview(false); return }
 
@@ -207,12 +209,27 @@ export default function BracketTab({ editionId }: Props) {
       const roundNames = roundDefs.map(r => r.phaseName)
       if (includeThirdPlace && bracketSize >= 4) roundNames.splice(roundNames.length - 1, 0, '3er Puesto')
 
+      // Build expected first-round crossings for cross_group mode (display only)
+      let crossings: { home: string; away: string }[] | undefined
+      if (seedingMode === 'cross_group' && groups.length === 2) {
+        const groupATeams = rows.filter(r => r.group_id === groups[0].id).slice(0, qpg)
+        const groupBTeams = rows.filter(r => r.group_id === groups[1].id).slice(0, qpg)
+        const K = Math.min(qpg, groupATeams.length, groupBTeams.length)
+        crossings = []
+        for (let k = 0; k < K; k++) {
+          const teamA = groupATeams[k]?.team?.name ?? `${groups[0].name} #${k + 1}`
+          const teamB = groupBTeams[K - 1 - k]?.team?.name ?? `${groups[1].name} #${K - k}`
+          crossings.push({ home: `${k + 1}° ${groups[0].name}: ${teamA}`, away: `${K - k}° ${groups[1].name}: ${teamB}` })
+        }
+      }
+
       setPreview({
         total,
         bracketSize,
         byes,
         rounds: roundNames,
         message: `${total} equipos · bracket de ${bracketSize} · ${byes} BYE(s)`,
+        crossings,
       })
     } finally {
       setLoadingPreview(false)
@@ -335,14 +352,18 @@ export default function BracketTab({ editionId }: Props) {
 
       {disc && (
         <div className="mb-4 p-3 bg-gray-50 rounded-lg border text-sm">
-          <div className="flex items-center justify-between">
-            <div>
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <strong className="text-gray-800">{SPORT_LABELS[disc.name]} {GENDER_LABELS[disc.gender]}</strong>
-              <span className="mx-2 text-gray-300">·</span>
+              <span className="text-gray-300">·</span>
               <span className="text-gray-500">Clasifica: top {disc.qualifying_per_group} por grupo</span>
               {(disc.best_thirds_count ?? 0) > 0 && (
                 <span className="text-gray-500"> + {disc.best_thirds_count} mejores terceros</span>
               )}
+              <span className="text-gray-300">·</span>
+              <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${(disc as Discipline & { seeding_mode?: string }).seeding_mode === 'cross_group' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'}`}>
+                {(disc as Discipline & { seeding_mode?: string }).seeding_mode === 'cross_group' ? 'Cruces cruzados' : 'Seeding por mérito'}
+              </span>
             </div>
             {hasBracket ? (
               <Badge className="bg-green-100 text-green-800">Bracket activo · {bracketMatches.length} partidos</Badge>
@@ -372,8 +393,26 @@ export default function BracketTab({ editionId }: Props) {
               </div>
               {preview.byes > 0 && (
                 <p className="text-xs text-blue-600">
-                  Los {preview.byes} BYE(s) se asignan automáticamente a los mejores seeds.
+                  {preview.crossings
+                    ? `Los ${preview.byes} BYE(s) quedarán al final de los cruces cruzados.`
+                    : `Los ${preview.byes} BYE(s) se asignan automáticamente a los mejores seeds.`}
                 </p>
+              )}
+              {preview.crossings && preview.crossings.length > 0 && (
+                <div className="border-t border-blue-200 pt-3">
+                  <p className="text-xs font-semibold text-blue-800 mb-2">Cruces esperados en 1ª ronda:</p>
+                  <div className="space-y-1.5">
+                    {preview.crossings.map((c, i) => (
+                      <div key={i} className="flex items-center gap-2 text-xs text-blue-700">
+                        <span className="w-5 h-5 bg-blue-200 rounded-full flex items-center justify-center font-bold text-blue-900 flex-shrink-0">{i + 1}</span>
+                        <span className="truncate">{c.home}</span>
+                        <span className="text-blue-400 font-bold flex-shrink-0">vs</span>
+                        <span className="truncate">{c.away}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-blue-500 mt-2">Los cruces son aproximados; el orden final depende de los standings al momento de generar.</p>
+                </div>
               )}
             </div>
           )}
