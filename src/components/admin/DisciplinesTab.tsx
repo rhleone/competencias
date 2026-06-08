@@ -22,6 +22,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { toast } from 'sonner'
+import { HelpCircle } from 'lucide-react'
 import type { Database, DisciplineType, GenderType, MatchLegs } from '@/types/database'
 
 type Discipline = Database['public']['Tables']['disciplines']['Row']
@@ -56,6 +57,77 @@ const defaultForm = {
   max_matches_per_day: 1,
 }
 
+// ─── Seeding mode help content ────────────────────────────────────────────────
+const SEEDING_HELP = [
+  {
+    mode: 'merit',
+    label: 'Por mérito global',
+    color: 'bg-gray-100 text-gray-700',
+    description: 'Todos los clasificados se ordenan por puntos, diferencia de goles y goles a favor. El bracket se forma con seeding estándar: el 1° no puede cruzarse con el 2° hasta la final.',
+    example: '3 grupos, 2 clasifican por grupo → 6 equipos.\nSeed 1 (mejor 1°) vs Seed 6 en QF.\nSeed 2 (2° mejor 1°) vs Seed 5 en QF. etc.',
+    ideal: 'Cuando querés que el mejor equipo llegue lo más lejos posible.',
+  },
+  {
+    mode: 'cross_group',
+    label: 'Cruces cruzados',
+    color: 'bg-purple-100 text-purple-700',
+    description: 'Los primeros de un grupo cruzan con los últimos del otro y viceversa. Requiere exactamente 2 grupos.',
+    example: '2 grupos (A y B), clasifican 4 de cada uno → 8 equipos.\nCuartos: 1°A vs 4°B · 2°A vs 3°B\n         3°A vs 2°B · 4°A vs 1°B',
+    ideal: 'Torneos con 2 zonas donde querés que los equipos del mismo grupo no se crucen hasta semifinales.',
+  },
+  {
+    mode: 'ranked_byes',
+    label: 'BYEs para mejores seeds',
+    color: 'bg-amber-100 text-amber-700',
+    description: 'Igual que mérito, pero garantiza que cuando el total de equipos no es potencia de 2 (ej: 9 equipos → bracket de 16), los mejores seeds reciben BYE automático y avanzan sin jugar.',
+    example: '3 grupos, 3 clasifican por grupo → 9 equipos, bracket de 16.\nSeeds 1 al 7 avanzan automáticamente (BYE).\nSolo seeds 8 y 9 juegan en la primera ronda.',
+    ideal: 'Cuando el número de clasificados no es potencia de 2 y querés proteger a los líderes de grupo.',
+  },
+  {
+    mode: 'manual',
+    label: 'Asignación manual',
+    color: 'bg-blue-100 text-blue-700',
+    description: 'El bracket se genera con los slots vacíos. El administrador asigna manualmente qué equipo ocupa cada posición en la primera ronda antes de que empiece la fase eliminatoria.',
+    example: 'Se generan los partidos QF1, QF2, QF3, QF4 sin equipos.\nEl admin elige: QF1 → Equipo A vs Equipo D\n              QF2 → Equipo B vs Equipo C, etc.',
+    ideal: 'Sorteos públicos, condiciones especiales (sponsor, sede) o cuando las reglas del torneo no siguen ningún patrón estándar.',
+  },
+]
+
+function SeedingHelpDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle>Modos de seeding — ¿Cuál elegir?</DialogTitle>
+        </DialogHeader>
+        <div className="overflow-y-auto flex-1 space-y-4 pr-1 py-1">
+          {SEEDING_HELP.map((item) => (
+            <div key={item.mode} className="border rounded-lg p-4 space-y-2">
+              <div className="flex items-center gap-2">
+                <span className={`text-xs px-2 py-0.5 rounded font-semibold ${item.color}`}>{item.label}</span>
+              </div>
+              <p className="text-sm text-gray-700">{item.description}</p>
+              <div className="bg-gray-50 rounded p-3 font-mono text-xs text-gray-600 whitespace-pre-line leading-relaxed">
+                {item.example}
+              </div>
+              <p className="text-xs text-gray-500">
+                <span className="font-semibold text-gray-700">Ideal para:</span> {item.ideal}
+              </p>
+            </div>
+          ))}
+          <p className="text-xs text-gray-400 pt-2 border-t">
+            El modo se puede cambiar en cualquier momento mientras no haya un bracket generado para esa disciplina.
+            Si ya existe un bracket, eliminalo primero desde la pestaña Bracket y volvé a generarlo.
+          </p>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cerrar</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 interface Props {
   editionId: string
 }
@@ -72,6 +144,7 @@ export default function DisciplinesTab({ editionId }: Props) {
   const [editing, setEditing] = useState<Discipline | null>(null)
   const [deleting, setDeleting] = useState<Discipline | null>(null)
   const [form, setForm] = useState(defaultForm)
+  const [seedingHelpOpen, setSeedingHelpOpen] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -414,7 +487,17 @@ export default function DisciplinesTab({ editionId }: Props) {
                 </div>
               </div>
               <div className="mt-4 space-y-2">
-                <Label>Modo de cruces en 1ª ronda</Label>
+                <div className="flex items-center gap-2">
+                  <Label>Modo de cruces en 1ª ronda</Label>
+                  <button
+                    type="button"
+                    onClick={() => setSeedingHelpOpen(true)}
+                    className="text-gray-400 hover:text-gray-600 transition"
+                    title="Ver descripción de cada modo"
+                  >
+                    <HelpCircle className="w-4 h-4" />
+                  </button>
+                </div>
                 <Select
                   value={form.seeding_mode}
                   onValueChange={(v) => setForm((prev) => ({ ...prev, seeding_mode: v ?? 'merit' }))}
@@ -472,6 +555,8 @@ export default function DisciplinesTab({ editionId }: Props) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <SeedingHelpDialog open={seedingHelpOpen} onClose={() => setSeedingHelpOpen(false)} />
     </div>
   )
 }
