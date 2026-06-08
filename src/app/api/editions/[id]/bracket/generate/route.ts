@@ -184,9 +184,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const bracketSize = nextPow2(total)
   const byes = bracketSize - total
   const rounds = getRoundDefs(bracketSize)
-  // cross_group: pairs are already consecutive in allSeeds → sequential slot assignment
-  // merit: redistribute via standard tournament seeding (best seed meets worst in final)
-  const seedingSlots = (seedingMode === 'cross_group' && groups.length === 2)
+  // cross_group + no BYEs: pairs are consecutive in allSeeds → sequential slots (perfect crossings).
+  // cross_group + BYEs: fall back to getSeedingSlots so top seeds receive BYEs (ranked_byes behavior).
+  // ranked_byes / merit / manual: getSeedingSlots (standard tournament seeding).
+  const seedingSlots = (seedingMode === 'cross_group' && groups.length === 2 && byes === 0)
     ? Array.from({ length: bracketSize }, (_, i) => i + 1)
     : getSeedingSlots(bracketSize)
 
@@ -264,63 +265,75 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
 
     // ─── Fill First-Round Teams & Handle BYEs ─────────────────────────────────
-    const firstRound = rounds[0]
-    const firstRoundMatchIds = matchIdsByRound[0]
+    // Manual mode: skip — admin assigns seeds via the /bracket/seed endpoint,
+    //              then finalises with /bracket/confirm-seeds.
+    if (seedingMode !== 'manual') {
+      const firstRound = rounds[0]
+      const firstRoundMatchIds = matchIdsByRound[0]
 
-    for (let pi = 0; pi < seedingSlots.length; pi += 2) {
-      const matchIdx = pi / 2
-      const seedA = seedingSlots[pi]       // home seed number (1-based)
-      const seedB = seedingSlots[pi + 1]   // away seed number (1-based)
+      for (let pi = 0; pi < seedingSlots.length; pi += 2) {
+        const matchIdx = pi / 2
+        const seedA = seedingSlots[pi]       // home seed number (1-based)
+        const seedB = seedingSlots[pi + 1]   // away seed number (1-based)
 
-      const teamA = seedA <= total ? allSeeds[seedA - 1].teamId : null  // null = BYE
-      const teamB = seedB <= total ? allSeeds[seedB - 1].teamId : null  // null = BYE
+        const teamA = seedA <= total ? allSeeds[seedA - 1].teamId : null  // null = BYE
+        const teamB = seedB <= total ? allSeeds[seedB - 1].teamId : null  // null = BYE
 
-      const isBye = teamA === null || teamB === null
-      const matchId = firstRoundMatchIds[matchIdx]
+        const isBye = teamA === null || teamB === null
+        const matchId = firstRoundMatchIds[matchIdx]
 
-      // Update the first-round match with teams
-      const updateData: Record<string, unknown> = {
-        home_team_id: teamA,
-        away_team_id: teamB,
-      }
-      if (isBye) {
-        // Auto-finish: the real team wins with 1-0 (or 0-1 if teamA is BYE)
-        updateData.status = 'finished'
-        updateData.home_score = teamA !== null ? 1 : 0
-        updateData.away_score = teamB !== null ? 1 : 0
-      }
-
-      const { error: updErr } = await db.from('matches').update(updateData).eq('id', matchId)
-      if (updErr) throw new Error(`Error actualizando partido ${firstRound.positions[matchIdx]}: ${updErr.message}`)
-
-      // Inline advance for BYE matches
-      if (isBye) {
-        const winnerId = teamA !== null ? teamA : teamB
-
-        // Determine which next-round match and slot
-        if (rounds.length > 1) {
-          const nextRoundMatchIdx = Math.floor(matchIdx / 2)
-          const nextMatchId = matchIdsByRound[1][nextRoundMatchIdx]
-          const slot = matchIdx % 2 === 0 ? 'home_team_id' : 'away_team_id'
-
-          const { error: advErr } = await db.from('matches').update({ [slot]: winnerId }).eq('id', nextMatchId)
-          if (advErr) throw new Error(`Error avanzando BYE al siguiente partido: ${advErr.message}`)
+        // Update the first-round match with teams
+        const updateData: Record<string, unknown> = {
+          home_team_id: teamA,
+          away_team_id: teamB,
         }
-        // If bracketSize=2 (only a Final), the Final itself was already updated with both teams above
+        if (isBye) {
+          // Auto-finish: the real team wins with 1-0 (or 0-1 if teamA is BYE)
+          updateData.status = 'finished'
+          updateData.home_score = teamA !== null ? 1 : 0
+          updateData.away_score = teamB !== null ? 1 : 0
+        }
+
+        const { error: updErr } = await db.from('matches').update(updateData).eq('id', matchId)
+        if (updErr) throw new Error(`Error actualizando partido ${firstRound.positions[matchIdx]}: ${updErr.message}`)
+
+        // Inline advance for BYE matches
+        if (isBye) {
+          const winnerId = teamA !== null ? teamA : teamB
+
+          // Determine which next-round match and slot
+          if (rounds.length > 1) {
+            const nextRoundMatchIdx = Math.floor(matchIdx / 2)
+            const nextMatchId = matchIdsByRound[1][nextRoundMatchIdx]
+            const slot = matchIdx % 2 === 0 ? 'home_team_id' : 'away_team_id'
+
+            const { error: advErr } = await db.from('matches').update({ [slot]: winnerId }).eq('id', nextMatchId)
+            if (advErr) throw new Error(`Error avanzando BYE al siguiente partido: ${advErr.message}`)
+          }
+          // If bracketSize=2 (only a Final), the Final itself was already updated with both teams above
+        }
       }
     }
 
     const totalCreated = rounds.reduce((acc, r) => acc + r.positions.length, 0) + (thirdPlaceId ? 1 : 0)
     const roundNames = [...rounds.map(r => r.phaseName), ...(thirdPlaceId ? ['3er Puesto'] : [])]
 
-    const modeLabel = seedingMode === 'cross_group' ? 'cruces cruzados' : 'seeding por mérito'
+    const modeLabel: Record<string, string> = {
+      cross_group: 'cruces cruzados',
+      ranked_byes: 'BYEs para mejores seeds',
+      manual: 'asignación manual',
+    }
+    const pendingSeeding = seedingMode === 'manual'
     return NextResponse.json({
       ok: true,
       total,
       bracketSize,
       byes,
       rounds: roundNames,
-      message: `Bracket generado (${modeLabel}): ${total} equipos, ${byes} BYE(s), ${totalCreated} partidos (${roundNames.join(' → ')}).`,
+      pendingSeeding,
+      message: pendingSeeding
+        ? `Bracket generado (manual): ${totalCreated} partidos creados. Asigná los ${total} seeds en la pestaña Bracket y luego confirmá.`
+        : `Bracket generado (${modeLabel[seedingMode] ?? 'seeding por mérito'}): ${total} equipos, ${byes} BYE(s), ${totalCreated} partidos (${roundNames.join(' → ')}).`,
     })
   } catch (err) {
     return NextResponse.json({ error: (err as Error).message }, { status: 500 })

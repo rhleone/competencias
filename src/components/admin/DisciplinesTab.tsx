@@ -425,12 +425,15 @@ export default function DisciplinesTab({ editionId }: Props) {
                   <SelectContent>
                     <SelectItem value="merit">Por mérito global — mejor seed vs peor seed</SelectItem>
                     <SelectItem value="cross_group">Cruces cruzados — 1°A vs K°B, 2°A vs (K-1)°B… (2 grupos)</SelectItem>
+                    <SelectItem value="ranked_byes">BYEs para mejores seeds — garantiza que los líderes avanzan en brackets impares</SelectItem>
+                    <SelectItem value="manual">Manual — el admin asigna cada seed en el bracket</SelectItem>
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-gray-400">
-                  {form.seeding_mode === 'cross_group'
-                    ? 'Los primeros de un grupo cruzan con los últimos del otro. Requiere exactamente 2 grupos.'
-                    : 'Todos los clasificados se ordenan por mérito y el bracket se forma con seeding estándar.'}
+                  {form.seeding_mode === 'cross_group' && 'Los primeros de un grupo cruzan con los últimos del otro. Requiere exactamente 2 grupos.'}
+                  {form.seeding_mode === 'merit' && 'Todos los clasificados se ordenan por mérito global y se aplica seeding estándar de torneo.'}
+                  {form.seeding_mode === 'ranked_byes' && 'Igual que mérito pero garantiza que si el bracket es impar, los mejores seeds reciben BYE automático.'}
+                  {form.seeding_mode === 'manual' && 'El bracket se genera vacío y el admin asigna manualmente a qué seed va cada equipo antes de jugar.'}
                 </p>
               </div>
             </div>

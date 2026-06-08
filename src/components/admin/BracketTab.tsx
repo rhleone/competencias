@@ -35,6 +35,14 @@ const STATUS_LABELS: Record<MatchStatus, string> = {
   scheduled: 'Programado', live: 'En vivo', finished: 'Finalizado', postponed: 'Postergado',
 }
 
+interface QualifiedTeam {
+  id: string
+  name: string
+  color: string | null
+  groupName: string
+  position: number
+}
+
 interface BracketMatch {
   id: string
   bracket_position: string
@@ -148,6 +156,10 @@ export default function BracketTab({ editionId }: Props) {
   const [clearing, setClearing] = useState(false)
   const [includeThirdPlace, setIncludeThirdPlace] = useState(true)
 
+  // Manual seeding
+  const [qualifiedTeams, setQualifiedTeams] = useState<QualifiedTeam[]>([])
+  const [confirmingSeeds, setConfirmingSeeds] = useState(false)
+
   // Schedule dialog
   const [schedDialog, setSchedDialog] = useState(false)
   const [schedulingMatch, setSchedulingMatch] = useState<BracketMatch | null>(null)
@@ -250,6 +262,50 @@ export default function BracketTab({ editionId }: Props) {
 
   useEffect(() => { loadDisciplines() }, [loadDisciplines])
   useEffect(() => { if (selectedDisc) { loadBracket(selectedDisc) } }, [selectedDisc, loadBracket])
+
+  // Load qualified teams for manual seeding mode
+  useEffect(() => {
+    const disc = disciplines.find(d => d.id === selectedDisc)
+    const isManual = (disc as Discipline & { seeding_mode?: string })?.seeding_mode === 'manual'
+    if (!isManual || !selectedDisc) { setQualifiedTeams([]); return }
+
+    async function loadQualifiedTeams() {
+      const { data: groupsData } = await supabase.from('groups')
+        .select('id, name').eq('edition_id', editionId).eq('discipline_id', selectedDisc).order('name')
+      const groups: { id: string; name: string }[] = groupsData ?? []
+      if (groups.length === 0) return
+
+      const groupIds = groups.map(g => g.id)
+      const { data: standingsData } = await db.from('standings')
+        .select('group_id, team_id, points, goal_difference, goals_for, team:team_id(id, name, color)')
+        .in('group_id', groupIds)
+
+      const disc = disciplines.find(d => d.id === selectedDisc)
+      const qpg = disc?.qualifying_per_group ?? 2
+
+      // Build sorted standings per group, take top qpg
+      const teams: QualifiedTeam[] = []
+      for (const g of groups) {
+        const rows = ((standingsData ?? []) as {
+          group_id: string; team_id: string; points: number; goal_difference: number; goals_for: number;
+          team: { id: string; name: string; color: string | null } | null
+        }[])
+          .filter(r => r.group_id === g.id)
+          .sort((a, b) => {
+            if (b.points !== a.points) return b.points - a.points
+            if (b.goal_difference !== a.goal_difference) return b.goal_difference - a.goal_difference
+            return b.goals_for - a.goals_for
+          })
+          .slice(0, qpg)
+
+        rows.forEach((r, i) => {
+          if (r.team) teams.push({ id: r.team.id, name: r.team.name, color: r.team.color, groupName: g.name, position: i + 1 })
+        })
+      }
+      setQualifiedTeams(teams)
+    }
+    loadQualifiedTeams()
+  }, [selectedDisc, disciplines]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (selectedDisc && bracketMatches.length === 0 && disciplines.length > 0) {
       loadPreview(selectedDisc)
@@ -261,6 +317,30 @@ export default function BracketTab({ editionId }: Props) {
   useEffect(() => {
     if (selectedDisc && bracketMatches.length === 0) loadPreview(selectedDisc)
   }, [includeThirdPlace]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function handleSeedAssign(matchId: string, slot: 'home' | 'away', teamId: string | null) {
+    const res = await fetch(`/api/editions/${editionId}/bracket/seed`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ matchId, slot, teamId }),
+    })
+    const json = await res.json()
+    if (res.ok) loadBracket(selectedDisc)
+    else toast.error(json.error ?? 'Error al asignar seed')
+  }
+
+  async function handleConfirmSeeds() {
+    setConfirmingSeeds(true)
+    const res = await fetch(`/api/editions/${editionId}/bracket/confirm-seeds`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ disciplineId: selectedDisc }),
+    })
+    const json = await res.json()
+    if (res.ok) { toast.success(json.message); loadBracket(selectedDisc) }
+    else toast.error(json.error ?? 'Error al confirmar seeds')
+    setConfirmingSeeds(false)
+  }
 
   async function handleGenerate() {
     setGenerating(true)
@@ -330,6 +410,22 @@ export default function BracketTab({ editionId }: Props) {
   const activeRounds = ROUND_ORDER.filter(r => roundsMap.has(r))
   const disc = disciplines.find(d => d.id === selectedDisc)
   const hasBracket = bracketMatches.length > 0
+  const seedingMode = (disc as Discipline & { seeding_mode?: string })?.seeding_mode ?? 'merit'
+
+  // For manual mode: identify first-round matches (those not targeted by any winner_advances_to)
+  const advancesTargets = new Set(bracketMatches.map(m => m.winner_advances_to).filter(Boolean))
+  const firstRoundMatches = bracketMatches.filter(
+    m => m.bracket_position !== '3PO' && !advancesTargets.has(m.id)
+  )
+  const isPendingManualSeeds = seedingMode === 'manual' && hasBracket &&
+    firstRoundMatches.some(m => m.home_team === null || m.away_team === null)
+
+  // Teams already assigned in the first round (for exclusion in dropdowns)
+  const assignedTeamIds = new Set<string>()
+  firstRoundMatches.forEach(m => {
+    if (m.home_team?.id) assignedTeamIds.add(m.home_team.id)
+    if (m.away_team?.id) assignedTeamIds.add(m.away_team.id)
+  })
 
   if (loading) return <p className="text-gray-500">Cargando...</p>
   if (disciplines.length === 0) return <p className="text-gray-500">Agrega disciplinas primero.</p>
@@ -361,8 +457,16 @@ export default function BracketTab({ editionId }: Props) {
                 <span className="text-gray-500"> + {disc.best_thirds_count} mejores terceros</span>
               )}
               <span className="text-gray-300">·</span>
-              <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${(disc as Discipline & { seeding_mode?: string }).seeding_mode === 'cross_group' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'}`}>
-                {(disc as Discipline & { seeding_mode?: string }).seeding_mode === 'cross_group' ? 'Cruces cruzados' : 'Seeding por mérito'}
+              <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
+                seedingMode === 'cross_group' ? 'bg-purple-100 text-purple-700'
+                : seedingMode === 'ranked_byes' ? 'bg-amber-100 text-amber-700'
+                : seedingMode === 'manual' ? 'bg-blue-100 text-blue-700'
+                : 'bg-gray-100 text-gray-600'
+              }`}>
+                {seedingMode === 'cross_group' ? 'Cruces cruzados'
+                  : seedingMode === 'ranked_byes' ? 'BYEs para mejores seeds'
+                  : seedingMode === 'manual' ? 'Asignación manual'
+                  : 'Seeding por mérito'}
               </span>
             </div>
             {hasBracket ? (
@@ -438,6 +542,93 @@ export default function BracketTab({ editionId }: Props) {
       ) : (
         /* ── Bracket View ── */
         <div>
+          {/* ── Manual seeding panel ── */}
+          {isPendingManualSeeds && (
+            <div className="mb-6 p-4 border-2 border-blue-300 rounded-xl bg-blue-50 space-y-4">
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <div>
+                  <p className="font-semibold text-blue-900">Asignación de seeds — pendiente</p>
+                  <p className="text-xs text-blue-600 mt-0.5">
+                    Asigná un equipo a cada slot. Los slots en blanco se tratarán como BYE al confirmar.
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={handleConfirmSeeds}
+                  disabled={confirmingSeeds}
+                  className="bg-blue-700 hover:bg-blue-800 text-white"
+                >
+                  {confirmingSeeds ? 'Procesando...' : 'Confirmar seeds y procesar BYEs'}
+                </Button>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {firstRoundMatches.map((m, idx) => {
+                  const availableTeams = qualifiedTeams.filter(t =>
+                    !assignedTeamIds.has(t.id) || m.home_team?.id === t.id || m.away_team?.id === t.id
+                  )
+                  return (
+                    <div key={m.id} className="bg-white border rounded-lg p-3 space-y-2">
+                      <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">
+                        {m.bracket_position} — Partido {idx + 1}
+                      </p>
+
+                      {/* Home slot */}
+                      <div className="space-y-1">
+                        <p className="text-xs text-gray-400">Local</p>
+                        <select
+                          className="w-full text-xs border rounded px-2 py-1.5 bg-white"
+                          value={m.home_team?.id ?? ''}
+                          onChange={(e) => handleSeedAssign(m.id, 'home', e.target.value || null)}
+                        >
+                          <option value="">— BYE / Sin asignar —</option>
+                          {availableTeams
+                            .filter(t => m.home_team?.id === t.id || !assignedTeamIds.has(t.id))
+                            .map(t => (
+                              <option key={t.id} value={t.id}>
+                                {t.position}° {t.groupName}: {t.name}
+                              </option>
+                            ))}
+                        </select>
+                        {m.home_team && (
+                          <div className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full" style={{ background: m.home_team.color ?? '#ccc' }} />
+                            <span className="text-xs text-green-700 font-medium">{m.home_team.name}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Away slot */}
+                      <div className="space-y-1">
+                        <p className="text-xs text-gray-400">Visitante</p>
+                        <select
+                          className="w-full text-xs border rounded px-2 py-1.5 bg-white"
+                          value={m.away_team?.id ?? ''}
+                          onChange={(e) => handleSeedAssign(m.id, 'away', e.target.value || null)}
+                        >
+                          <option value="">— BYE / Sin asignar —</option>
+                          {availableTeams
+                            .filter(t => m.away_team?.id === t.id || !assignedTeamIds.has(t.id))
+                            .map(t => (
+                              <option key={t.id} value={t.id}>
+                                {t.position}° {t.groupName}: {t.name}
+                              </option>
+                            ))}
+                        </select>
+                        {m.away_team && (
+                          <div className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full" style={{ background: m.away_team.color ?? '#ccc' }} />
+                            <span className="text-xs text-green-700 font-medium">{m.away_team.name}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
           <div className="mb-4 flex justify-end">
             <Button variant="outline" size="sm" onClick={handleClear} disabled={clearing} className="text-red-600 border-red-200 hover:bg-red-50">
               {clearing ? 'Eliminando...' : 'Eliminar bracket'}
