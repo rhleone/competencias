@@ -18,6 +18,8 @@ interface MatchDetail {
   id: string; edition_id: string; scheduled_at: string | null; field_number: number | null
   match_day: number | null; status: MatchStatus; home_score: number | null; away_score: number | null
   notes: string | null; bracket_position: string | null; winner_advances_to: string | null; winner_slot: string | null
+  loser_advances_to: string | null
+  penalty_home_score: number | null; penalty_away_score: number | null
   home_team: { id: string; name: string; color: string | null; logo_url: string | null } | null
   away_team: { id: string; name: string; color: string | null; logo_url: string | null } | null
   discipline: { name: DisciplineType; gender: string } | null
@@ -42,14 +44,22 @@ export default function MatchPage({ params }: { params: Promise<{ id: string }> 
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
   const [changingStatus, setChangingStatus] = useState(false)
+  const [penaltyHome, setPenaltyHome] = useState(0)
+  const [penaltyAway, setPenaltyAway] = useState(0)
+  const [savingPenalty, setSavingPenalty] = useState(false)
 
   async function loadMatch() {
     const { data } = await supabase.from('matches')
-      .select('id, edition_id, scheduled_at, field_number, match_day, status, home_score, away_score, notes, bracket_position, winner_advances_to, winner_slot, home_team:home_team_id(id, name, color, logo_url), away_team:away_team_id(id, name, color, logo_url), discipline:discipline_id(name, gender), group:group_id(name)')
+      .select('id, edition_id, scheduled_at, field_number, match_day, status, home_score, away_score, notes, bracket_position, winner_advances_to, winner_slot, loser_advances_to, penalty_home_score, penalty_away_score, home_team:home_team_id(id, name, color, logo_url), away_team:away_team_id(id, name, color, logo_url), discipline:discipline_id(name, gender), group:group_id(name)')
       .eq('id', id).single()
     if (data) {
       const m = data as MatchDetail
-      setMatch(m); setHomeScore(m.home_score ?? 0); setAwayScore(m.away_score ?? 0); setNotes(m.notes ?? '')
+      setMatch(m)
+      setHomeScore(m.home_score ?? 0)
+      setAwayScore(m.away_score ?? 0)
+      setNotes(m.notes ?? '')
+      setPenaltyHome(m.penalty_home_score ?? 0)
+      setPenaltyAway(m.penalty_away_score ?? 0)
     }
     setLoading(false)
   }
@@ -71,8 +81,18 @@ export default function MatchPage({ params }: { params: Promise<{ id: string }> 
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ matchId: match.id }),
       })
-      if (advRes.ok) toast.success('Ganador avanzado al siguiente partido')
-      else { const j = await advRes.json(); toast.warning(`Partido finalizado pero no se pudo avanzar: ${j.error}`) }
+      if (advRes.ok) {
+        const j = await advRes.json()
+        toast.success(j.thirdPlaceMatchId ? 'Ganador y perdedor avanzados ✓' : 'Ganador avanzado al siguiente partido')
+      } else {
+        const j = await advRes.json()
+        // Tie error is expected — inform operator to enter penalty scores
+        if (j.error?.includes('penales')) {
+          toast.info('Partido finalizado. Ingresá los penales para avanzar al ganador.')
+        } else {
+          toast.warning(`Partido finalizado pero no se pudo avanzar: ${j.error}`)
+        }
+      }
     }
     loadMatch()
   }
@@ -87,13 +107,42 @@ export default function MatchPage({ params }: { params: Promise<{ id: string }> 
     loadMatch()
   }
 
+  async function savePenaltyAndAdvance() {
+    if (!match) return
+    setSavingPenalty(true)
+    // Save penalty scores
+    const { error: saveErr } = await supabase.from('matches')
+      .update({ penalty_home_score: penaltyHome, penalty_away_score: penaltyAway })
+      .eq('id', id)
+    if (saveErr) { toast.error('Error al guardar penales'); setSavingPenalty(false); return }
+
+    // Advance winner (and loser to 3PO)
+    const advRes = await fetch(`/api/editions/${match.edition_id}/bracket/advance`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ matchId: match.id }),
+    })
+    const j = await advRes.json()
+    if (advRes.ok) {
+      toast.success(j.thirdPlaceMatchId ? 'Penales guardados. Ganador y perdedor avanzados ✓' : 'Penales guardados. Ganador avanzado ✓')
+    } else {
+      toast.error(j.error ?? 'Error al avanzar')
+    }
+    setSavingPenalty(false)
+    loadMatch()
+  }
+
   if (loading) return <p className="text-gray-500">Cargando partido...</p>
   if (!match) return <p className="text-gray-500">Partido no encontrado.</p>
 
   const isPastMatch = match.scheduled_at ? match.scheduled_at < new Date().toISOString() : false
   const isEditable = match.status === 'live' || match.status === 'scheduled'
-  // Past scheduled matches show the result panel directly so operators can enter missed results
   const showResultPanel = match.status === 'live' || match.status === 'finished' || (match.status === 'scheduled' && isPastMatch)
+
+  const isKnockout = !!match.bracket_position && !!match.winner_advances_to
+  const isTied = match.status === 'finished' && (match.home_score ?? 0) === (match.away_score ?? 0)
+  const needsPenalty = isKnockout && isTied && (match.penalty_home_score == null || match.penalty_away_score == null)
+  const hasPenalty = isKnockout && match.penalty_home_score != null && match.penalty_away_score != null
+
   const genderCls = match.discipline?.gender === 'M' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-pink-50 text-pink-700 border-pink-200'
 
   return (
@@ -122,9 +171,16 @@ export default function MatchPage({ params }: { params: Promise<{ id: string }> 
             {match.status === 'scheduled' ? (
               <p className="text-gray-400 text-sm font-medium">VS</p>
             ) : (
-              <p className={`text-4xl font-bold tabular-nums ${match.status === 'live' ? 'text-red-600' : 'text-gray-800'}`}>
-                {match.home_score ?? 0} — {match.away_score ?? 0}
-              </p>
+              <>
+                <p className={`text-4xl font-bold tabular-nums ${match.status === 'live' ? 'text-red-600' : 'text-gray-800'}`}>
+                  {match.home_score ?? 0} — {match.away_score ?? 0}
+                </p>
+                {hasPenalty && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Pen: {match.penalty_home_score} — {match.penalty_away_score}
+                  </p>
+                )}
+              </>
             )}
             <div className="mt-1">
               {match.status === 'live' && <span className="inline-flex items-center gap-1 bg-red-500 text-white text-xs px-2 py-0.5 rounded-full font-bold animate-pulse">EN VIVO</span>}
@@ -186,6 +242,41 @@ export default function MatchPage({ params }: { params: Promise<{ id: string }> 
               </Button>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Penalty shootout — shown when knockout match ends tied */}
+      {needsPenalty && (
+        <div className="bg-white rounded-xl border-2 border-orange-300 p-5 space-y-4">
+          <div>
+            <p className="font-semibold text-sm text-orange-800">Definición por penales</p>
+            <p className="text-xs text-orange-600 mt-0.5">Ingresá el resultado de los lanzamientos para determinar el ganador.</p>
+          </div>
+          <div className="grid grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <Label className="text-xs text-gray-500 block text-center">{match.home_team?.name}</Label>
+              <div className="flex items-center justify-center gap-3">
+                <button onClick={() => setPenaltyHome((p) => Math.max(0, p - 1))} className="w-10 h-10 rounded-full border-2 border-orange-200 text-xl font-bold hover:border-orange-400 transition">−</button>
+                <span className="text-4xl font-bold tabular-nums w-12 text-center text-orange-700">{penaltyHome}</span>
+                <button onClick={() => setPenaltyHome((p) => p + 1)} className="w-10 h-10 rounded-full border-2 border-orange-200 text-xl font-bold hover:border-orange-400 transition">+</button>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs text-gray-500 block text-center">{match.away_team?.name}</Label>
+              <div className="flex items-center justify-center gap-3">
+                <button onClick={() => setPenaltyAway((p) => Math.max(0, p - 1))} className="w-10 h-10 rounded-full border-2 border-orange-200 text-xl font-bold hover:border-orange-400 transition">−</button>
+                <span className="text-4xl font-bold tabular-nums w-12 text-center text-orange-700">{penaltyAway}</span>
+                <button onClick={() => setPenaltyAway((p) => p + 1)} className="w-10 h-10 rounded-full border-2 border-orange-200 text-xl font-bold hover:border-orange-400 transition">+</button>
+              </div>
+            </div>
+          </div>
+          <Button
+            onClick={savePenaltyAndAdvance}
+            disabled={savingPenalty || penaltyHome === penaltyAway}
+            className="w-full bg-orange-600 hover:bg-orange-700"
+          >
+            {savingPenalty ? 'Guardando...' : penaltyHome === penaltyAway ? 'Los penales deben tener un ganador' : 'Guardar penales y avanzar ganador'}
+          </Button>
         </div>
       )}
 

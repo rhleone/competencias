@@ -13,8 +13,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   let query = db
     .from('matches')
     .select(`
-      id, bracket_position, winner_advances_to, winner_slot,
-      status, home_score, away_score, scheduled_at, field_number, phase_id,
+      id, bracket_position, winner_advances_to, winner_slot, loser_advances_to,
+      status, home_score, away_score, penalty_home_score, penalty_away_score,
+      scheduled_at, field_number, phase_id,
       home_team:home_team_id(id, name, color),
       away_team:away_team_id(id, name, color),
       discipline:discipline_id(id, name, gender),

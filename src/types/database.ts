@@ -142,6 +142,8 @@ export interface Database {
           winner_slot: 'home' | 'away' | null
           loser_advances_to: string | null
           loser_slot: 'home' | 'away' | null
+          penalty_home_score: number | null
+          penalty_away_score: number | null
           created_at: string
           updated_at: string
         }

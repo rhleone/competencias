@@ -43,14 +43,23 @@ interface QualifiedTeam {
   position: number
 }
 
+interface DiscTeam {
+  id: string
+  name: string
+  color: string | null
+}
+
 interface BracketMatch {
   id: string
   bracket_position: string
   winner_advances_to: string | null
   winner_slot: string | null
+  loser_advances_to: string | null
   status: MatchStatus
   home_score: number | null
   away_score: number | null
+  penalty_home_score: number | null
+  penalty_away_score: number | null
   scheduled_at: string | null
   field_number: number | null
   home_team: { id: string; name: string; color: string | null } | null
@@ -74,16 +83,20 @@ function TeamDot({ color }: { color: string | null }) {
 }
 
 function MatchCard({
-  match, onSchedule, onAdvance,
+  match, onSchedule, onAdvance, onEditTeams,
 }: {
   match: BracketMatch
   onSchedule: (m: BracketMatch) => void
   onAdvance: (m: BracketMatch) => void
+  onEditTeams: (m: BracketMatch) => void
 }) {
   const isFinished = match.status === 'finished'
   const isBye = isFinished && (match.home_team === null || match.away_team === null)
-  const homeWin = isFinished && (match.home_score ?? 0) > (match.away_score ?? 0)
-  const awayWin = isFinished && (match.away_score ?? 0) > (match.home_score ?? 0)
+  const homeScore = match.home_score ?? 0
+  const awayScore = match.away_score ?? 0
+  const isTied = isFinished && homeScore === awayScore && !isBye
+  const homeWin = isFinished && (homeScore > awayScore || (isTied && (match.penalty_home_score ?? 0) > (match.penalty_away_score ?? 0)))
+  const awayWin = isFinished && (awayScore > homeScore || (isTied && (match.penalty_away_score ?? 0) > (match.penalty_home_score ?? 0)))
 
   return (
     <div className={`bg-white border rounded-lg p-3 shadow-sm w-52 ${match.status === 'live' ? 'border-green-400' : ''}`}>
@@ -117,6 +130,13 @@ function MatchCard({
         ) : <span className="text-gray-400 italic text-xs">{isBye ? 'BYE' : 'Por definir'}</span>}
       </div>
 
+      {/* Penalty result indicator */}
+      {isTied && match.penalty_home_score != null && (
+        <p className="text-xs text-gray-400 mt-1 text-center">
+          Pen: {match.penalty_home_score} — {match.penalty_away_score}
+        </p>
+      )}
+
       {match.scheduled_at && (
         <p className="text-xs text-gray-400 mt-1.5">
           {new Date(match.scheduled_at).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })}
@@ -125,12 +145,15 @@ function MatchCard({
         </p>
       )}
 
-      <div className="flex gap-1 mt-2">
+      <div className="flex gap-1 mt-2 flex-wrap">
         {!isBye && (
           <Button size="sm" variant="outline" className="flex-1 text-xs h-7" onClick={() => onSchedule(match)}>
             {match.scheduled_at ? 'Reprogramar' : 'Programar'}
           </Button>
         )}
+        <Button size="sm" variant="ghost" className="text-xs h-7 px-2 text-gray-400 hover:text-gray-700" onClick={() => onEditTeams(match)} title="Editar equipos">
+          ✎
+        </Button>
         {isFinished && match.winner_advances_to && (
           <Button size="sm" className="text-xs h-7 px-2" onClick={() => onAdvance(match)}>
             Avanzar →
@@ -167,6 +190,14 @@ export default function BracketTab({ editionId }: Props) {
   const [schedTime, setSchedTime] = useState('')
   const [schedField, setSchedField] = useState('')
   const [saving, setSaving] = useState(false)
+
+  // Edit teams dialog
+  const [editTeamsDialog, setEditTeamsDialog] = useState(false)
+  const [editingMatch, setEditingMatch] = useState<BracketMatch | null>(null)
+  const [editHomeTeamId, setEditHomeTeamId] = useState<string>('')
+  const [editAwayTeamId, setEditAwayTeamId] = useState<string>('')
+  const [discTeams, setDiscTeams] = useState<DiscTeam[]>([])
+  const [savingTeams, setSavingTeams] = useState(false)
 
   const loadDisciplines = useCallback(async () => {
     const { data } = await supabase.from('disciplines').select('*').eq('edition_id', editionId).order('created_at')
@@ -278,7 +309,12 @@ export default function BracketTab({ editionId }: Props) {
   }
 
   useEffect(() => { loadDisciplines() }, [loadDisciplines])
-  useEffect(() => { if (selectedDisc) { loadBracket(selectedDisc) } }, [selectedDisc, loadBracket])
+  useEffect(() => {
+    if (selectedDisc) {
+      loadBracket(selectedDisc)
+      setDiscTeams([]) // reset so they reload for the new discipline
+    }
+  }, [selectedDisc, loadBracket])
 
   // Load qualified teams for manual seeding mode
   useEffect(() => {
@@ -431,8 +467,52 @@ export default function BracketTab({ editionId }: Props) {
       body: JSON.stringify({ matchId: m.id }),
     })
     const json = await res.json()
-    if (res.ok) { toast.success('Ganador avanzado'); loadBracket(selectedDisc) }
-    else toast.error(json.error)
+    if (res.ok) {
+      toast.success(json.thirdPlaceMatchId ? 'Ganador y perdedor avanzados' : 'Ganador avanzado')
+      loadBracket(selectedDisc)
+    } else {
+      toast.error(json.error)
+    }
+  }
+
+  async function openEditTeams(m: BracketMatch) {
+    setEditingMatch(m)
+    setEditHomeTeamId(m.home_team?.id ?? '')
+    setEditAwayTeamId(m.away_team?.id ?? '')
+    // Load discipline teams if not already loaded
+    if (discTeams.length === 0) {
+      const { data } = await db.from('team_disciplines')
+        .select('team:team_id(id, name, color)')
+        .eq('discipline_id', selectedDisc)
+      const teams: DiscTeam[] = (data ?? [])
+        .map((row: { team: { id: string; name: string; color: string | null } | null }) => row.team)
+        .filter(Boolean) as DiscTeam[]
+      teams.sort((a, b) => a.name.localeCompare(b.name))
+      setDiscTeams(teams)
+    }
+    setEditTeamsDialog(true)
+  }
+
+  async function handleEditTeamsSave() {
+    if (!editingMatch) return
+    setSavingTeams(true)
+    const res = await fetch(`/api/editions/${editionId}/matches/${editingMatch.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        homeTeamId: editHomeTeamId || null,
+        awayTeamId: editAwayTeamId || null,
+      }),
+    })
+    if (res.ok) {
+      toast.success('Equipos actualizados')
+      setEditTeamsDialog(false)
+      loadBracket(selectedDisc)
+    } else {
+      const j = await res.json()
+      toast.error(j.error ?? 'Error al guardar')
+    }
+    setSavingTeams(false)
   }
 
   // Group matches by round for display
@@ -676,7 +756,7 @@ export default function BracketTab({ editionId }: Props) {
                 <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3 text-center">{round}</h4>
                 <div className="flex flex-col gap-4 justify-around" style={{ minHeight: round.includes('Cuartos') ? 380 : round.includes('Octavos') ? 600 : round.includes('Semi') ? 220 : 110 }}>
                   {(roundsMap.get(round) ?? []).map((m) => (
-                    <MatchCard key={m.id} match={m} onSchedule={openSchedule} onAdvance={handleAdvance} />
+                    <MatchCard key={m.id} match={m} onSchedule={openSchedule} onAdvance={handleAdvance} onEditTeams={openEditTeams} />
                   ))}
                 </div>
               </div>
@@ -701,6 +781,48 @@ export default function BracketTab({ editionId }: Props) {
           <DialogFooter>
             <Button variant="outline" onClick={() => setSchedDialog(false)}>Cancelar</Button>
             <Button onClick={handleScheduleSave} disabled={saving || !schedDate || !schedTime}>{saving ? 'Guardando...' : 'Guardar'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit teams dialog */}
+      <Dialog open={editTeamsDialog} onOpenChange={setEditTeamsDialog}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Editar equipos — {editingMatch?.bracket_position}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-xs text-gray-500">Asigná manualmente los equipos para este partido. Dejá en blanco para marcar como "Por definir".</p>
+            <div className="space-y-2">
+              <Label>Local</Label>
+              <select
+                className="w-full text-sm border rounded px-3 py-2 bg-white"
+                value={editHomeTeamId}
+                onChange={(e) => setEditHomeTeamId(e.target.value)}
+              >
+                <option value="">— Por definir —</option>
+                {discTeams.map(t => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <Label>Visitante</Label>
+              <select
+                className="w-full text-sm border rounded px-3 py-2 bg-white"
+                value={editAwayTeamId}
+                onChange={(e) => setEditAwayTeamId(e.target.value)}
+              >
+                <option value="">— Por definir —</option>
+                {discTeams.map(t => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditTeamsDialog(false)}>Cancelar</Button>
+            <Button onClick={handleEditTeamsSave} disabled={savingTeams}>{savingTeams ? 'Guardando...' : 'Guardar'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

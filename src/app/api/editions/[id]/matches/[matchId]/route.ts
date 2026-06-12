@@ -40,10 +40,14 @@ export async function PATCH(
   try {
     const { id, matchId } = await params
     const body = await request.json()
-    const { scheduledAt, fieldNumber, status } = body as {
+    const { scheduledAt, fieldNumber, status, homeTeamId, awayTeamId, penaltyHomeScore, penaltyAwayScore } = body as {
       scheduledAt?: string
-      fieldNumber?: number
+      fieldNumber?: number | null
       status?: string
+      homeTeamId?: string | null
+      awayTeamId?: string | null
+      penaltyHomeScore?: number | null
+      penaltyAwayScore?: number | null
     }
 
     const supabase = await createClient()
@@ -54,6 +58,10 @@ export async function PATCH(
     if (scheduledAt !== undefined) updateData.scheduled_at = scheduledAt
     if (fieldNumber !== undefined) updateData.field_number = fieldNumber
     if (status !== undefined) updateData.status = status
+    if (homeTeamId !== undefined) updateData.home_team_id = homeTeamId
+    if (awayTeamId !== undefined) updateData.away_team_id = awayTeamId
+    if (penaltyHomeScore !== undefined) updateData.penalty_home_score = penaltyHomeScore
+    if (penaltyAwayScore !== undefined) updateData.penalty_away_score = penaltyAwayScore
 
     const { error } = await db
       .from('matches')
